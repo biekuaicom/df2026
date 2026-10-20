@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+      登录页底部署名：把 Odoo 原生的「由 Odoo 提供支持 / Powered by Odoo」换成本方支持信息。
+      原模板见 web/views/webclient_templates.xml 的 web.login_layout。
+    -->
+    <template id="login_layout_support" inherit_id="web.login_layout" name="登录页底部署名">
+        <xpath expr="//a[contains(@href, 'odoo.com')]" position="replace">
+            <span>由u788990<span>@</span>163.com 提供支持</span>
+        </xpath>
+    </template>
+</odoo>
