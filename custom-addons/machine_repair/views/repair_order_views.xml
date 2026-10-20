@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ 看板：紧急度高亮 + 置顶排序 + 救援标识 ============ -->
+    <record id="view_repair_order_kanban_machine_repair" model="ir.ui.view">
+        <field name="name">repair.order.kanban.machine_repair</field>
+        <field name="model">repair.order</field>
+        <field name="inherit_id" ref="repair.view_repair_kanban"/>
+        <field name="arch" type="xml">
+            <!-- 加急和快到期的永远排在最前 -->
+            <xpath expr="//kanban" position="attributes">
+                <attribute name="default_order">urgency_sequence, deadline_datetime</attribute>
+            </xpath>
+            <!-- 卡片整体边框：超时接力=金、加急=红、紧急=橙 -->
+            <xpath expr="//t[@t-name='card']/div[1]" position="attributes">
+                <attribute name="t-attf-class">row #{record.state.raw_value === 'timeout_alert' ? 'border border-2 border-warning bg-warning-light' : (record.urgency_level.raw_value === 'emergency' ? 'border border-2 border-danger' : (record.urgency_level.raw_value === 'urgent' ? 'border border-2 border-warning' : ''))}</attribute>
+            </xpath>
+            <!-- 紧急度徽标 / 超期 / 可接力 / 师傅 / 期限 -->
+            <xpath expr="//t[@t-name='card']/div[1]" position="inside">
+                <div class="col-12 d-flex align-items-center gap-2 mt-1">
+                    <field name="urgency_level" widget="badge"
+                           decoration-danger="urgency_level == 'emergency'"
+                           decoration-warning="urgency_level == 'urgent'"
+                           decoration-info="urgency_level == 'normal'"/>
+                    <field name="deadline_state" widget="badge"
+                           decoration-danger="deadline_state == 'overdue'"/>
+                    <span t-if="record.state.raw_value == 'timeout_alert'" class="badge text-bg-warning">可接力</span>
+                    <span t-if="record.technician_id.raw_value" class="text-muted small">
+                        <field name="technician_id"/>
+                    </span>
+                    <span class="text-muted small ms-auto">
+                        <field name="deadline_datetime" widget="date"/>
+                    </span>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============ 表单：调度信息 + 抢单/退单/接力按钮 ============ -->
+    <record id="view_repair_order_form_machine_repair" model="ir.ui.view">
+        <field name="name">repair.order.form.machine_repair</field>
+        <field name="model">repair.order</field>
+        <field name="inherit_id" ref="repair.view_repair_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_publish" type="object" string="发布到大厅" class="btn-primary"
+                        invisible="state not in ('draft', 'timeout_alert')"/>
+                <button name="action_claim" type="object" string="抢单" class="btn-primary"
+                        invisible="not claimable"/>
+                <button name="action_release" type="object" string="退单" class="btn-secondary"
+                        invisible="not technician_id"/>
+                <button name="action_relay" type="object" string="转接力" class="btn-secondary"
+                        invisible="not technician_id"/>
+                <button name="action_secondary_complete" type="object" string="接力完工" class="btn-secondary"
+                        invisible="state != 'timeout_alert'"/>
+                <button name="action_reset_modify_count" type="object" string="重置修改次数"
+                        class="btn-secondary" groups="base.group_system"
+                        invisible="not modify_count"/>
+                <button name="action_create_board_qr" type="object" string="生成二维码"
+                        class="btn-secondary" invisible="board_qr_id or not partner_id"/>
+                <button name="action_load_extra_parts" type="object" string="带出另计维修"
+                        class="btn-secondary" invisible="not machine_id"/>
+            </xpath>
+            <xpath expr="//header/field[@name='state']" position="attributes">
+                <attribute name="statusbar_visible">draft,pending_claim,confirmed,timeout_alert,done,secondary_completed</attribute>
+            </xpath>
+            <!-- 维修服务行：显示对应电路板与自定义单价（过保维修按台账单价收费） -->
+            <xpath expr="//field[@name='repair_service_line_ids']/list" position="inside">
+                <field name="board_product_id" optional="show"/>
+                <field name="price_unit" invisible="parent.under_warranty"/>
+            </xpath>
+            <xpath expr="//sheet" position="inside">
+                <group string="调度信息">
+                    <group>
+                        <field name="urgency_level"/>
+                        <field name="urgency_days"/>
+                        <field name="deadline_datetime"/>
+                        <field name="is_overdue" invisible="not is_overdue"/>
+                    </group>
+                    <group>
+                        <field name="technician_id"/>
+                        <field name="claimed_at" invisible="not claimed_at"/>
+                        <field name="relay_count" invisible="not relay_count"/>
+                        <field name="relay_reason" placeholder="退单或转接力时填写原因"/>
+                    </group>
+                    <group>
+                        <field name="board_qr_id" options="{'no_create': True}"/>
+                        <field name="scan_code" placeholder="扫码枪扫一下，或粘贴 MR1;QR=... 内容"/>
+                        <button name="action_resolve_scan" type="object" string="识别二维码"
+                                class="btn-link" colspan="2" invisible="not scan_code"/>
+                        <field name="qr_warranty_state" invisible="not board_qr_id"/>
+                        <field name="extra_charge_price"/>
+                        <field name="warranty_months"/>
+                        <field name="machine_id" options="{'no_create': True}"/>
+                        <field name="is_rework" invisible="not is_rework"/>
+                        <field name="previous_repair_count" invisible="not machine_id"/>
+                        <field name="repair_round" invisible="not machine_id"/>
+                        <field name="modify_count" invisible="not modify_count"/>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============ 列表：紧急度徽标 + 期限 + 师傅 ============ -->
+    <record id="view_repair_order_tree_machine_repair" model="ir.ui.view">
+        <field name="name">repair.order.tree.machine_repair</field>
+        <field name="model">repair.order</field>
+        <field name="inherit_id" ref="repair.view_repair_order_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list" position="attributes">
+                <attribute name="decoration-danger">urgency_level == 'emergency' or state == 'timeout_alert'</attribute>
+                <attribute name="decoration-warning">urgency_level == 'urgent'</attribute>
+                <attribute name="default_order">urgency_sequence, deadline_datetime</attribute>
+            </xpath>
+            <xpath expr="//list" position="inside">
+                <field name="urgency_level" widget="badge" optional="show"
+                       decoration-danger="urgency_level == 'emergency'"
+                       decoration-warning="urgency_level == 'urgent'"/>
+                <field name="deadline_datetime" optional="show"/>
+                <field name="technician_id" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============ 搜索：大厅常用过滤与分组 ============ -->
+    <record id="view_repair_order_filter_machine_repair" model="ir.ui.view">
+        <field name="name">repair.order.search.machine_repair</field>
+        <field name="model">repair.order</field>
+        <field name="inherit_id" ref="repair.view_repair_order_form_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <filter name="filter_pending_claim" string="待抢单"
+                        domain="[('state', '=', 'pending_claim')]"/>
+                <filter name="filter_timeout" string="超时接力"
+                        domain="[('state', '=', 'timeout_alert')]"/>
+                <filter name="filter_mine" string="我抢的"
+                        domain="[('technician_id', '=', uid)]"/>
+                <filter name="filter_emergency" string="加急"
+                        domain="[('urgency_level', '=', 'emergency')]"/>
+                <separator/>
+                <filter name="group_by_urgency" string="紧急度"
+                        context="{'group_by': 'urgency_level'}"/>
+                <filter name="group_by_technician" string="维修师傅"
+                        context="{'group_by': 'technician_id'}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============ 工单大厅入口 ============ -->
+    <record id="action_repair_hall" model="ir.actions.act_window">
+        <field name="name">工单大厅</field>
+        <field name="res_model">repair.order</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('state', 'in', ['draft', 'pending_claim', 'confirmed', 'timeout_alert'])]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">工单大厅</p>
+            <p>新建维修单后点「发布到大厅」，师傅在这里抢单；
+               超期未完成的工单会被每小时巡检自动转为「超时接力」并高亮。</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_repair_hall" name="工单大厅"
+              parent="menu_machine_repair_root"
+              action="action_repair_hall" sequence="20"
+              groups="stock.group_stock_user"/>
+</odoo>
