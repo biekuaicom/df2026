@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_machine_repair_root" name="机台维修" sequence="75"
+              web_icon="machine_repair,static/description/icon-v3.png"/>
+    <menuitem id="menu_machine_repair_base" name="基础档案"
+              parent="menu_machine_repair_root" sequence="10"/>
+    <menuitem id="menu_machine_base_template" name="机型标准模板"
+              parent="menu_machine_repair_base"
+              action="action_machine_base_template" sequence="10"/>
+    <menuitem id="menu_customer_machine" name="客户机台台账"
+              parent="menu_machine_repair_base"
+              action="action_customer_machine" sequence="20"/>
+</odoo>
