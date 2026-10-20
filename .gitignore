@@ -1,0 +1,28 @@
+﻿# 运行时与数据（绝不提交）
+odoo/
+venv/
+pgsql/
+pgsql-data/
+logs/
+data/
+dist/
+*.zip
+*.log
+**/__pycache__/
+*.pyc
+.DS_Store
+_thumbs/
+
+# Android 构建产物与签名
+mobile-android/build/
+mobile-android/dist/
+mobile-android/keystore/
+mobile-android/app/libs/*.jar
+.gradle/
+
+# 本地配置 / 凭据 / 数据库备份
+odoo.conf
+.tools/db-credentials.txt
+*.jks
+*.keystore
+backup-state.json
