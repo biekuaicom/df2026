@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 报表首页：用原生 board 把 6 大报表拼成一页（左右两栏） -->
+    <record id="view_repair_dashboard_board" model="ir.ui.view">
+        <field name="name">machine.repair.dashboard.board</field>
+        <field name="model">board.board</field>
+        <field name="arch" type="xml">
+            <form string="报表首页">
+                <board style="1-1">
+                    <column>
+                        <action name="%(action_report_machine_ledger)d" string="1 机台台账" view_mode="pivot"/>
+                        <action name="%(action_report_repair_orders)d" string="2 维修工单综合" view_mode="pivot"/>
+                        <action name="%(action_report_monthly_revenue)d" string="3 包月收入统计" view_mode="pivot"/>
+                    </column>
+                    <column>
+                        <action name="%(action_report_part_moves)d" string="4 配件出库明细" view_mode="list"/>
+                        <action name="%(action_report_fault_stats)d" string="5 故障经验统计" view_mode="pivot"/>
+                        <action name="%(action_report_machine_history)d" string="6 单台机台履历" view_mode="list"/>
+                    </column>
+                </board>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_repair_dashboard" model="ir.actions.act_window">
+        <field name="name">报表首页</field>
+        <field name="res_model">board.board</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_repair_dashboard_board"/>
+        <field name="context">{'disable_toolbar': True}</field>
+    </record>
+
+    <menuitem id="menu_repair_dashboard" name="报表首页"
+              parent="menu_machine_repair_report"
+              action="action_repair_dashboard" sequence="5"/>
+</odoo>
