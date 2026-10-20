@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_customer_machine_list" model="ir.ui.view">
+        <field name="name">customer.machine.list</field>
+        <field name="model">customer.machine</field>
+        <field name="arch" type="xml">
+            <list string="客户机台台账">
+                <field name="machine_no"/>
+                <field name="partner_id"/>
+                <field name="machine_model"/>
+                <field name="installation_address" optional="show"/>
+                <field name="monthly_fee" sum="合计"/>
+                <field name="monthly_start_date" optional="show"/>
+                <field name="line_count" optional="show"/>
+                <field name="monthly_active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_customer_machine_form" model="ir.ui.view">
+        <field name="name">customer.machine.form</field>
+        <field name="model">customer.machine</field>
+        <field name="arch" type="xml">
+            <form string="客户机台档案">
+                <header>
+                    <button name="action_load_template_lines" type="object"
+                            string="从模板载入器件基线" class="btn-primary"
+                            help="按所选机型模板的专属电路板清单，生成本机台的器件行（仅当器件行为空时可执行）"/>
+                    <button name="%(action_machine_copy_wizard)d" type="action"
+                            string="批量复制机台" class="btn-secondary"
+                            context="{'default_source_machine_id': id}"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="machine_no"/>
+                        <h1><field name="machine_no" placeholder="如：M-001" required="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="partner_id" options="{'no_create': True}"/>
+                            <field name="template_id" options="{'no_create': True}"/>
+                            <field name="machine_model"/>
+                            <field name="installation_address"/>
+                        </group>
+                        <group>
+                            <field name="monthly_fee"/>
+                            <field name="monthly_start_date"/>
+                            <field name="monthly_active"/>
+                            <field name="monthly_end_date" invisible="monthly_active"/>
+                            <field name="line_count"/>
+                            <field name="extra_parts_amount" invisible="not extra_parts_amount"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="器件基线" name="lines">
+                            <field name="line_ids">
+                                <list editable="bottom">
+                                    <field name="product_id"
+                                           options="{'no_create': False}"
+                                           context="{'machine_repair_board_default': True}"/>
+                                    <field name="billing_type"/>
+                                    <field name="extra_price" invisible="billing_type != 'extra'"/>
+                                    <field name="extra_subtotal" invisible="billing_type != 'extra'"
+                                           sum="另计合计"/>
+                                    <field name="warranty_months" invisible="billing_type != 'extra'"/>
+                                    <field name="qty"/>
+                                    <field name="note"/>
+                                </list>
+                            </field>
+                            <div class="text-muted mt-2">
+                                选好机型模板后，该模板下的专属电路板会<b>自动带进来</b>；
+                                模板里没有的可以点「添加行」手动补。
+                                「计费方式」决定这块板是含在包月单价里，还是每次维修按「另计单价」另算。
+                                板件 SN 与二维码不在这里录 —— 等真正发工单扫码时才生成。
+                            </div>
+                        </page>
+                        <page string="备注" name="note">
+                            <field name="note"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_customer_machine_search" model="ir.ui.view">
+        <field name="name">customer.machine.search</field>
+        <field name="model">customer.machine</field>
+        <field name="arch" type="xml">
+            <search string="客户机台台账">
+                <field name="machine_no"/>
+                <field name="partner_id"/>
+                <field name="template_id"/>
+                <filter name="filter_monthly" string="包月中" domain="[('monthly_active', '=', True)]"/>
+                <filter name="filter_archived" string="已归档" domain="[('active', '=', False)]"/>
+                <filter name="group_by_partner" string="按客户" context="{'group_by': 'partner_id'}"/>
+                <filter name="group_by_template" string="按机型" context="{'group_by': 'template_id'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_customer_machine" model="ir.actions.act_window">
+        <field name="name">客户机台台账</field>
+        <field name="res_model">customer.machine</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">建立第一台客户机台</p>
+            <p>选好客户与机型模板，点「从模板载入器件基线」，再用「批量复制机台」快速铺开同一客户的其它机台。</p>
+        </field>
+    </record>
+</odoo>
