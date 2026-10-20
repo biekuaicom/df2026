@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 维修师傅组：一次授权即可用，自动带上库存/维修用户权限。
+         原生 repair.order 的 CRUD 只授予 stock.group_stock_user，
+         而 mail.message 的创建又带域限制（res_access_create），
+         所以没有这个组就连 chatter 消息都发不出去。 -->
+    <record id="group_machine_repair_technician" model="res.groups">
+        <field name="name">机台维修 / 师傅</field>
+        <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
+        <field name="comment">维修师傅：可抢单、维修、退单、转接力；自动带上「库存 / 用户」权限。</field>
+    </record>
+</odoo>
