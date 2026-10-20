@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_machine_repair_report" name="报表" parent="menu_machine_repair_root" sequence="80"/>
+
+    <!-- 1) 机台台账报表：客户 / 机台编号 / 机型 / 包月状态 / 器件基线 -->
+    <record id="action_report_machine_ledger" model="ir.actions.act_window">
+        <field name="name">1 机台台账报表</field>
+        <field name="res_model">customer.machine</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="context">{'search_default_group_by_partner': 1}</field>
+    </record>
+    <menuitem id="menu_report_machine_ledger" name="1 机台台账"
+              parent="menu_machine_repair_report" action="action_report_machine_ledger" sequence="10"/>
+
+    <!-- 2) 维修工单综合报表：工单 / 师傅 / 故障 / 配件 -->
+    <record id="action_report_repair_orders" model="ir.actions.act_window">
+        <field name="name">2 维修工单综合报表</field>
+        <field name="res_model">repair.order</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="context">{'search_default_group_by_technician': 1}</field>
+    </record>
+    <menuitem id="menu_report_repair_orders" name="2 维修工单综合"
+              parent="menu_machine_repair_report" action="action_report_repair_orders" sequence="20"/>
+
+    <!-- 3) 包月收入统计报表：按月 / 按台 / 按客户 -->
+    <record id="action_report_monthly_revenue" model="ir.actions.act_window">
+        <field name="name">3 包月收入统计报表</field>
+        <field name="res_model">machine.billing.line</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="context">{'search_default_group_by_month': 1}</field>
+    </record>
+    <menuitem id="menu_report_monthly_revenue" name="3 包月收入统计"
+              parent="menu_machine_repair_report" action="action_report_monthly_revenue" sequence="30"/>
+
+    <!-- 4) 配件出库明细报表：只看工单关联的库存移动 -->
+    <record id="action_report_part_moves" model="ir.actions.act_window">
+        <field name="name">4 配件出库明细报表</field>
+        <field name="res_model">stock.move</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="domain">[('repair_id', '!=', False)]</field>
+        <field name="context">{'search_default_group_by_product': 1}</field>
+    </record>
+    <menuitem id="menu_report_part_moves" name="4 配件出库明细"
+              parent="menu_machine_repair_report" action="action_report_part_moves" sequence="40"/>
+
+    <!-- 5) 故障经验统计报表：故障频次 / 器件损坏 TOP -->
+    <record id="action_report_fault_stats" model="ir.actions.act_window">
+        <field name="name">5 故障经验统计报表</field>
+        <field name="res_model">repair.case</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="context">{'search_default_group_by_category': 1}</field>
+    </record>
+    <menuitem id="menu_report_fault_stats" name="5 故障经验统计"
+              parent="menu_machine_repair_report" action="action_report_fault_stats" sequence="50"/>
+
+    <!-- 6) 单台机台履历报表：单台机台全生命周期 -->
+    <record id="action_report_machine_history" model="ir.actions.act_window">
+        <field name="name">6 单台机台履历报表</field>
+        <field name="res_model">repair.case</field>
+        <field name="view_mode">list,graph</field>
+        <field name="context">{'search_default_group_by_machine': 1}</field>
+    </record>
+    <menuitem id="menu_report_machine_history" name="6 单台机台履历"
+              parent="menu_machine_repair_report" action="action_report_machine_history" sequence="60"/>
+</odoo>
