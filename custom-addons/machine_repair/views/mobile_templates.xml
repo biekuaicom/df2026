@@ -1,0 +1,1706 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="mobile_app" name="机台维修（手机端）">
+        <html lang="zh-CN">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+                <title>机台维修</title>
+                <meta name="theme-color" content="#5B3A8F"/>
+                <meta name="mobile-web-app-capable" content="yes"/>
+                <meta name="apple-mobile-web-app-capable" content="yes"/>
+                <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+                <link rel="manifest" href="/machine_repair/mobile/manifest.json"/>
+                <link rel="icon" href="/machine_repair/static/src/img/app-192.png?v=4"/>
+                <link rel="apple-touch-icon" href="/machine_repair/static/src/img/app-192.png?v=4"/>
+                <script src="/machine_repair/static/src/js/zxing.min.js"></script>
+                <script src="/machine_repair/static/src/js/jsQR.js"></script>
+                <style>
+                    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+                    body { margin: 0; padding-bottom: 74px; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+                           background: #f4f2f8; color: #24202c; }
+                    header { background: linear-gradient(135deg, #5B3A8F, #7A54B8); color: #fff;
+                             padding: 14px 16px; position: sticky; top: 0; z-index: 10; }
+                    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+                    header .sub { font-size: 12px; opacity: .9; margin-top: 3px; }
+                    .badge { background: #ffb020; color: #3a2400; border-radius: 999px;
+                             padding: 2px 9px; font-size: 12px; font-weight: 700; display: none; }
+                    .wrap { padding: 12px; }
+                    .card { background: #fff; border-radius: 14px; padding: 14px; margin-bottom: 12px;
+                            box-shadow: 0 2px 10px rgba(60,40,100,.08); }
+                    .card h2 { margin: 0 0 10px; font-size: 15px; color: #5B3A8F; }
+                    .btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 15px;
+                           font-size: 16px; font-weight: 600; color: #fff; background: #5B3A8F;
+                           margin-bottom: 10px; }
+                    .btn:active { transform: scale(.99); opacity: .9; }
+                    .btn:disabled { background: #b9aed6; }
+                    .btn.ghost { background: #ece8f5; color: #5B3A8F; }
+                    .btn.ok { background: #1e7b45; }
+                    .btn.danger { background: #c0392b; }`n                    .btn.sel { background: #5B3A8F; color: #fff; }
+                    .btn.small { padding: 9px 12px; font-size: 13px; margin: 0; width: auto; display: inline-block; }
+                    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+                    #video { width: 100%; height: auto; border-radius: 0; background: #000; }
+                    .hint { font-size: 12px; color: #6b6478; line-height: 1.6; }
+                    .kv { display: flex; justify-content: space-between; padding: 7px 0;
+                          border-bottom: 1px solid #f0edf5; font-size: 14px; gap: 10px; }
+                    .kv:last-child { border-bottom: 0; }
+                    .kv b { font-weight: 600; text-align: right; }
+                    .tag { display: inline-block; padding: 2px 8px; border-radius: 999px;
+                           font-size: 12px; font-weight: 600; }
+                    .tag.ok { background: #e3f6ea; color: #1e7b45; }
+                    .tag.bad { background: #fdeaea; color: #b03030; }
+                    .tag.warn { background: #fff4d6; color: #8a5b00; }
+                    .tag.info { background: #e8f0fe; color: #1a4f9c; }
+                    .tag.muted { background: #eee; color: #666; }
+                    select { width: 100%; padding: 13px; border: 1px solid #ddd6e8; border-radius: 12px;
+                             font-size: 15px; background: #faf9fc; color: #24202c; margin-top: 6px; }
+                    .field-label { font-size: 12px; color: #6b6478; margin-top: 10px; display: block; }
+                    input[type=text] { width: 100%; padding: 13px; border: 1px solid #ddd6e8;
+                                       border-radius: 12px; font-size: 15px; background: #faf9fc; }
+                    .order { border: 1px solid #eee7f6; border-radius: 12px; padding: 10px 12px;
+                             margin-bottom: 10px; }
+                    .order .info { font-size: 13px; line-height: 1.55; margin-bottom: 8px; }
+                    .order .info b { font-size: 14px; }
+                    .thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+                    .thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px;
+                                  border: 1px solid #e6dff2; }
+                    .photo-row { display: flex; gap: 8px; margin-top: 8px; }
+                    .photo-row .btn { margin-bottom: 0; }
+                    .history-item { font-size: 12px; color: #5d5669; padding: 4px 0;
+                                    border-bottom: 1px dashed #f0edf5; }
+                    #toast { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
+                             background: rgba(30,20,50,.94); color: #fff; padding: 12px 18px;
+                             border-radius: 12px; font-size: 14px; max-width: 88vw; display: none; z-index: 50; }
+                    #toast.show { display: block; }
+                    .empty { color: #9a93a8; font-size: 13px; padding: 6px 0; }
+                    .legend { font-size: 12px; color: #6b6478; line-height: 1.9; }
+                    .tl { border-left: 3px solid #e6dff2; padding: 4px 0 6px 10px; margin-bottom: 10px; }
+                    .tl-sys { border-left-color: #b9a3e3; }
+                    .tl-chat { border-left-color: #1e7b45; }
+                    .tl-head { font-size: 12px; color: #6b6478; line-height: 1.7; }
+                    .tl-body { font-size: 14px; margin-top: 3px; white-space: pre-wrap; color: #24202c; }
+                    .warnbox { background: #fff4d6; border: 1px solid #f0d48a; color: #7a5300;
+                               border-radius: 10px; padding: 10px 12px; font-size: 13px;
+                               line-height: 1.6; margin-bottom: 12px; }
+                    .mask { position: fixed; inset: 0; z-index: 80; display: none;
+                            align-items: center; justify-content: center;
+                            background: rgba(28, 18, 46, .45); }
+                    .mask.show { display: flex; }
+                    .dialog { background: #fff; border-radius: 16px; padding: 18px 18px 14px;
+                              width: 82vw; max-width: 340px; box-shadow: 0 10px 34px rgba(40, 20, 70, .3); }
+                    .dialog-text { font-size: 15px; line-height: 1.65; color: #24202c;
+                                   white-space: pre-wrap; text-align: left; }
+                    .dialog-actions { display: flex; gap: 10px; margin-top: 16px; }
+                    .dialog-actions .btn { margin: 0; flex: 1; }
+                    .spinner { width: 34px; height: 34px; margin: 2px auto 12px;
+                               border: 4px solid #e6dff2; border-top-color: #5B3A8F;
+                               border-radius: 50%; animation: spin .8s linear infinite; }
+                    @keyframes spin { to { transform: rotate(360deg); } }
+                    .detail-sheet { position: fixed; inset: 0; z-index: 60; background: #f4f2f8;
+                                    overflow-y: auto; padding: 12px; display: none; }
+                    .detail-head { display: flex; align-items: center; justify-content: space-between;
+                                   margin-bottom: 10px; }
+                    .detail-head b { font-size: 16px; }
+                    .measure-item { display: flex; align-items: center; justify-content: space-between;
+                                    padding: 8px 0; border-bottom: 1px solid #f0edf5; font-size: 14px; }
+                    textarea { width: 100%; min-height: 70px; padding: 10px; border: 1px solid #ddd6e8;
+                               border-radius: 12px; font-size: 14px; background: #faf9fc;
+                               font-family: inherit; margin-top: 6px; }
+                    .video-item { display: flex; align-items: center; justify-content: space-between;
+                                  font-size: 13px; padding: 6px 0; border-bottom: 1px dashed #eee7f6; }
+                    .bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+                                 height: 60px; display: flex; align-items: center;
+                                 background: #fff; border-top: 1px solid #e8e4f0;
+                                 box-shadow: 0 -2px 12px rgba(60,40,100,.08);
+                                 padding-bottom: env(safe-area-inset-bottom); }
+                    .bottomnav .nav-item { flex: 1; border: 0; background: transparent;
+                                           font-size: 12px; color: #8a8397; padding: 6px 0; }
+                    .bottomnav .nav-item.active { color: #5B3A8F; font-weight: 700; }
+                    .bottomnav .nav-item .ico { display: block; font-size: 18px; line-height: 22px; }
+                    .plus-wrap { position: relative; flex: 0 0 78px; width: 78px; height: 78px;
+                                  min-height: 78px; margin-top: -24px; align-self: center; }
+                    /* + 号圆块：紫金渐变 + 呼吸灯光晕（在线呼吸 / 待上传更快 / 离线静止变灰） */
+                    .bottomnav .plus-wrap .plus {
+                        position: absolute; left: 50%; top: 50%;
+                        width: 58px; height: 58px; border-radius: 50%; border: 0;
+                        margin: 0; padding: 0; flex: none;
+                        color: #fff; font-size: 27px; font-weight: 700; line-height: 58px;
+                        text-align: center;
+                        /* 居中位移必须写在基础样式里：离线态 animation:none 时不能丢 */
+                        transform: translate(-50%, -50%);
+                        background: linear-gradient(140deg, #6FE3A6 0%, #2E9E5B 48%, #1B6B3C 100%);
+                        box-shadow: 0 6px 18px rgba(24, 96, 54, .45);
+                        animation: breathe 2.4s ease-in-out infinite;
+                        transition: background .3s ease, color .3s ease;
+                    }
+                    .bottomnav .plus-wrap .plus.has-pending {
+                        font-size: 23px;
+                        background: linear-gradient(140deg, #FFC24D 0%, #F59E1B 50%, #D9751A 100%);
+                        animation-duration: 1.15s;
+                    }
+                    .bottomnav .plus-wrap .plus.offline {
+                        background: linear-gradient(140deg, #C9C6D2 0%, #A7A3B3 50%, #807C8C 100%);
+                        color: #f5f4f8;
+                        animation: none;
+                        transform: translate(-50%, -50%);   /* 保持居中，避免掉位 */
+                        box-shadow: 0 4px 12px rgba(60, 60, 70, .28);
+                    }
+                    @keyframes breathe {
+                        0%, 100% {
+                            transform: translate(-50%, -50%) scale(1);
+                            box-shadow: 0 0 0 0 rgba(46, 158, 91, .55),
+                                        0 6px 18px rgba(24, 96, 54, .45);
+                        }
+                        50% {
+                            transform: translate(-50%, -50%) scale(1.08);
+                            box-shadow: 0 0 0 12px rgba(46, 158, 91, 0),
+                                        0 10px 26px rgba(24, 96, 54, .55);
+                        }
+                    }
+                    .bottomnav .plus { flex: 0 0 54px; width: 54px; height: 54px; border-radius: 50%;
+                                       border: 0; background: #5B3A8F; color: #fff; font-size: 28px;
+                                       font-weight: 700; box-shadow: 0 4px 14px rgba(91,58,143,.45);
+                                       margin-top: -18px; }
+                    .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+                    .tab { flex: 1; padding: 13px 8px; border-radius: 12px; text-align: center;
+                           font-size: 15px; font-weight: 600; background: #ece8f5; color: #5B3A8F;
+                           border: 0; }
+                    .tab.active { background: #5B3A8F; color: #fff; }
+                    .scan-box { position: relative; border-radius: 12px; overflow: hidden;
+                                background: #000; margin-bottom: 10px; }
+                    .scan-box video { display: block; width: 100%; border-radius: 0; }
+                    .scan-frame { position: absolute; top: 12%; left: 8%; right: 8%; bottom: 12%;
+                                  border: 2px solid rgba(255,255,255,.8); border-radius: 12px; }
+                    .scan-line { position: absolute; left: 3%; right: 3%; height: 3px; top: 6%;
+                                 background: linear-gradient(90deg, rgba(255,59,59,0), #ff3b3b, rgba(255,59,59,0));
+                                 box-shadow: 0 0 10px #ff3b3b; animation: sweep 1.8s ease-in-out infinite; }
+                    @keyframes sweep { 0% { top: 6%; } 50% { top: 90%; } 100% { top: 6%; } }
+                    .scan-hud { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px;
+                                font-size: 12px; color: #fff; background: rgba(0,0,0,.45); }
+                </style>
+            </head>
+            <body t-att-data-csrf="csrf_token">
+                <header id="app-header" style="display:none">
+                    <h1>别快纺织机维修系统 <span class="badge" id="queue-badge">待上传 0</span></h1>
+                    <span id="net" style="display:none"></span>
+                </header>
+
+                <div class="wrap">
+                    <div id="view-wo">
+                    <div class="tabs">
+                        <button class="tab" data-tab="task">任务工单</button>
+                        <button class="tab active" data-tab="scan">扫码建单</button>
+                        <button class="tab" data-tab="new">生码建单</button>
+                    </div>
+
+                    <div id="panel-scan">
+                    <div class="card">
+                        <h2>扫码 / 输入</h2>
+                        <input type="text" id="manual" placeholder="粘贴二维码内容或输入编号，如 QR-000011"/>
+                        <input type="text" id="err-code" placeholder="错误代码（选填，如 E-021）" style="margin-top:10px"/>
+                        <input type="text" id="fault-desc" placeholder="故障描述（选填，如 上电无显示）" style="margin-top:10px"/>
+                        <div class="row" style="margin-top:10px">
+                            <button class="btn" id="btn-start" style="flex:1;margin:0">扫码</button>
+                            <button class="btn ghost" id="btn-paste" style="flex:1;margin:0">粘贴</button>
+                            <button class="btn ghost" id="btn-manual" style="flex:1;margin:0">查询</button>
+                        </div>
+                        <button class="btn ghost" id="btn-stop" style="display:none;margin-top:10px">停止扫码</button>
+                        <div class="scan-box" id="scan-box" style="display:none">
+                            <video id="video" playsinline="1" autoplay="1" muted="1"></video>
+                            <div class="scan-frame"><div class="scan-line"></div></div>
+                            <div class="scan-hud" id="scan-hud">准备中…</div>
+                        </div>
+                        <canvas id="video-canvas" style="display:none"></canvas>
+                        <div class="hint" id="cam-hint" style="color:#c0392b"></div>
+                    </div>
+                    </div>
+
+                    <div class="card" id="result" style="display:none">
+                        <h2>板件信息</h2>
+                        <div id="qr-kv"></div>
+                        <div id="repeat-warn" class="warnbox" style="display:none"></div>
+                        <div id="claim-box"></div>
+
+                        <div style="margin-top:10px">
+                            <div class="hint">电路板照片（<b>正反面必须</b>，可再加局部特写）：</div>
+                            <div class="thumbs" id="thumbs"></div>
+                            <div class="photo-row">
+                                <button class="btn small" data-photo-kind="front">拍正面</button>
+                                <button class="btn small" data-photo-kind="back">拍反面</button>
+                                <button class="btn small ghost" data-photo-kind="detail">拍局部</button>
+                            </div>
+                        </div>
+
+                        <div id="history-box" style="margin-top:10px"></div>
+
+                        <div style="margin-top:12px">
+                            <div class="hint" style="margin-bottom:6px">紧急度（决定完成期限）：</div>
+                            <div class="row" id="urgency-row">
+                                <button class="btn small sel" data-urgency="normal">普通 7 天</button>
+                                <button class="btn small ghost" data-urgency="urgent">紧急 3 天</button>
+                                <button class="btn small ghost" data-urgency="emergency">加急 1 天</button>
+                            </div>
+                            <div class="hint" id="photo-block" style="color:#c0392b;margin-top:6px;display:none">
+                                正反面照片未拍齐，先拍照才能建单。
+                            </div>
+                            <div class="row" style="margin-top:12px">
+                                <button class="btn ok" id="btn-confirm-order" style="flex:1">确定建单</button>
+                                <button class="btn ghost" id="btn-cancel-order" style="flex:1">取消</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="panel-new" style="display:none">
+                    <div class="card" id="newqr-card">
+                        <h2>生码建单</h2>
+                        <div class="hint">扫到不是本系统的码（快递单 / 商品条码 / 原厂码）会自动切到这里；
+                            新板必须先拍正反面，才能建单。</div>
+                        <input type="text" id="newqr-q" placeholder="输入客户名搜索" style="margin-top:10px"/>
+                        <div id="newqr-customers" style="margin-top:8px"></div>
+                        <input type="text" id="new-qr-err" placeholder="错误代码（选填）" style="margin-top:10px"/>
+                        <input type="text" id="new-qr-fault" placeholder="故障描述（选填）" style="margin-top:10px"/>
+                        <span class="field-label">机台（对应机型标准模板里建的机型）</span>
+                        <select id="newqr-machine">
+                            <option value="">（先选客户，再选机台）</option>
+                        </select>
+                        <span class="field-label">板件型号（机型专属电路板排在最前 ★）</span>
+                        <select id="newqr-product">
+                            <option value="">（先选机台，再选板件型号）</option>
+                        </select>
+                        <input type="text" id="newqr-sn" placeholder="原厂条码/SN（可手填，也可扫）" style="margin-top:10px"/>
+                        <div class="row" style="margin-top:8px">
+                            <button class="btn small ghost" id="btn-scan-sn">扫描原厂条码 / 快递单</button>
+                        </div>
+                        <button class="btn ghost" id="btn-new-qr" style="margin-top:10px" disabled="disabled">生成二维码</button>
+                        <div id="newqr-result" style="margin-top:10px"></div>
+                        <div class="row" id="newqr-actions" style="margin-top:10px;display:none">
+                            <button class="btn ok" id="btn-newqr-ok" style="flex:1">确定（采用这张码）</button>
+                            <button class="btn ghost" id="btn-newqr-cancel" style="flex:1">取消（放弃这张码）</button>
+                        </div>
+                    </div>
+                    </div>
+
+                    <div id="panel-task" style="display:none">
+<div class="card">
+                        <h2>待抢单</h2>
+                        <div id="pending"></div>
+                    </div>
+
+                    <div class="card">
+                        <h2>状态说明</h2>
+                        <div class="legend">
+                            <span class="tag warn">待抢单</span> 已发布到大厅，等师傅接单<br/>
+                            <span class="tag info">维修中</span> 已接单，正在修<br/>
+                            <span class="tag bad">超时接力</span> 超期未完成，别人可接手<br/>
+                            <span class="tag ok">已完工</span> 修完，等会计开票<br/>
+                            <span class="tag ok">已开票</span> 已生成发票
+                        </div>
+                    </div>
+                    </div>
+                    </div>
+
+                    <!-- 消息：工单动态（系统+聊天）+ 内嵌讨论模块 -->
+                    <div id="view-msg" style="display:none">
+                        <div class="tabs">
+                            <button class="tab active" data-msg-tab="timeline">工单动态</button>
+                            <button class="tab" data-msg-tab="discuss">讨论</button>
+                        </div>
+                        <div id="msg-timeline">
+                            <div class="card">
+                                <h2>工单动态</h2>
+                                <div class="hint">系统事件（创建/发布/抢单/超时/完工/开票）与聊天内容按时间合并显示。</div>
+                                <button class="btn ghost" id="btn-timeline-refresh" style="margin-top:10px">刷新</button>
+                                <div id="timeline-list" style="margin-top:10px"></div>
+                            </div>
+                        </div>
+                        <div id="msg-discuss" style="display:none">
+                            <div class="card" style="padding:0;overflow:hidden">
+                                <iframe id="discuss-frame" style="width:100%;height:78vh;border:0;display:block"></iframe>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 故障：经验库 -->
+                    <div id="view-case" style="display:none">
+                        <div class="card">
+                            <h2>故障经验库</h2>
+                            <input type="text" id="case-q" placeholder="搜故障现象 / 机台号 / 处理方式"/>
+                            <button class="btn ghost" id="btn-case-search" style="margin-top:10px">搜索</button>
+                            <div id="case-list" style="margin-top:10px"></div>
+                        </div>
+                    </div>
+
+                    <!-- 我：我的工单 + 账号 -->
+                    <div id="view-me" style="display:none">
+                        <div class="card">
+                            <h2>我的工单</h2>
+                            <div class="hint">我创建或抢到的工单</div>
+                            <button class="btn ghost" id="btn-refresh">刷新</button>
+                            <div id="mine"></div>
+                        </div>
+                        <div class="card">
+                            <h2>账号</h2>
+                            <div class="kv"><span>当前用户</span><b><t t-out="user_name"/></b></div>
+                            <div class="kv"><span>页面版本</span><b>v31</b></div>
+                            <button class="btn ghost" id="btn-logout" style="margin-top:10px">退出登录</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="photo-viewer" class="mask">
+                    <div style="text-align:center">
+                        <img id="photo-viewer-img" style="max-width:92vw;max-height:76vh;border-radius:10px"/>
+                        <div style="margin-top:12px">
+                            <button class="btn ghost" id="photo-viewer-close" style="display:inline-block;margin:0">关闭</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="confirm-mask" class="mask">
+                    <div class="dialog">
+                        <div class="dialog-text" id="confirm-text"></div>
+                        <div class="dialog-actions">
+                            <button class="btn ghost" id="confirm-cancel">取消</button>
+                            <button class="btn ok" id="confirm-ok">确定</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="loading-mask" class="mask">
+                    <div class="dialog" style="text-align:center">
+                        <div class="spinner"></div>
+                        <div class="dialog-text" id="loading-text" style="text-align:center">正在打开…</div>
+                    </div>
+                </div>
+
+                <div id="order-detail" class="detail-sheet">
+                    <div class="detail-head">
+                        <b id="d-title">工单详情</b>
+                        <button class="btn small ghost" id="d-close" style="margin:0">关闭</button>
+                    </div>
+                    <div id="d-body"></div>
+                </div>
+                <input type="file" id="video-input" accept="video/*" capture="environment" style="display:none"/>
+
+                <nav class="bottomnav">
+                    <button class="nav-item" data-view="msg"><span class="ico">✉</span>消息</button>
+                    <button class="nav-item active" data-view="wo"><span class="ico">📋</span>工单</button>
+                    <div class="plus-wrap">
+                        <button class="plus" id="btn-quick-scan">＋</button>
+                    </div>
+                    <button class="nav-item" data-view="case"><span class="ico">🛠</span>故障</button>
+                    <button class="nav-item" data-view="me"><span class="ico">👤</span>我</button>
+                </nav>
+
+                <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none"/>
+                <div id="toast"></div>
+
+                <script>
+//<![CDATA[
+                (function () {
+                    var CSRF = document.body.getAttribute('data-csrf') || '';
+                    var BASE = '/machine_repair/mobile';
+                    // App 内原生扫码桥（系统相机 + 本地 ZXing 解码），比 WebView 摄像头稳得多
+                    var NATIVE = (typeof window.AndroidScanner !== 'undefined') ? window.AndroidScanner : null;
+                    window.onNativeScan = function (text) { if (text) { onDecoded(text); } };
+                    // 原生拍照返回：拍完直接上传（不用再点确认）
+                    window.onNativePhoto = function (kind, dataUrl) {
+                        if (!currentQr) { toast('请先扫码或生成二维码'); return; }
+                        if (!dataUrl) { return; }
+                        var qrId = currentQr.id;
+                        toast('照片已拍，正在上传…');
+                        uploadPhoto(qrId, kind || 'front', dataUrl).then(function (res) {
+                            if (!res.ok) { toast(res.error || '上传失败'); return; }
+                            toast('已上传' + ({front: '正面', back: '反面', detail: '局部'}[kind] || ''));
+                            // 先用接口返回的数据立即刷新（不依赖第二次请求）
+                            if (currentQr && res.photo_list) {
+                                currentQr.photo_list = res.photo_list;
+                                currentQr.photos = {
+                                    front: res.front, back: res.back,
+                                    detail: res.photo_list.filter(function (p) { return p.kind === 'detail'; }).length
+                                };
+                                currentQr.has_photos = res.has_photos;
+                                renderQr(currentQr);
+                            }
+                            var code = lastCode || (currentQr && currentQr.name);
+                            if (code) {
+                                post('/scan', {code: code}).then(function (r2) {
+                                    if (r2.ok && r2.qr) { renderQr(r2.qr); }
+                                }).catch(function () { });
+                            }
+                        }).catch(function () { toast('网络不稳，照片没传上去'); });
+                    };
+                    window.onNativeScanSn = function (text) {
+                        if (!text) { return; }
+                        document.getElementById('newqr-sn').value = text;
+                        toast('已扫到条码：' + text);
+                    };
+                    var video = document.getElementById('video');
+                    var canvas = document.createElement('canvas');
+                    var stream = null, raf = null, lastCode = null, pickedPartner = null;
+                    var currentQr = null;          // 当前板件（扫码或新建）
+                    var pendingKind = null;        // 本次要拍的部位
+                    var zxReader = null, scanMode = 'qr', scanning = false, frames = 0, ctx2d = null;
+                    var urgency = 'normal';
+                    var newQr = null;
+                    var QUEUE_KEY = 'mr_queue_v1';
+                    var PHOTO_KEY = 'mr_photos_v1';
+                    var STATE_CLASS = {
+                        '待抢单': 'warn', '维修中': 'info', '超时接力': 'bad',
+                        '已完工': 'ok', '接力完工': 'ok', '已退单': 'muted', '新建': 'muted', '已确认': 'info'
+                    };
+
+                    function toast(msg, ms) {
+                        var t = document.getElementById('toast');
+                        t.textContent = msg; t.className = 'show';
+                        clearTimeout(window.__tt);
+                        window.__tt = setTimeout(function () { t.className = ''; }, ms || 2400);
+                    }
+                    function esc(s) {
+                        return String(s === undefined || s === null ? '' : s)
+                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    }
+                    function post(path, data, isForm) {
+                        var body;
+                        if (isForm) { body = data; }
+                        else {
+                            body = new URLSearchParams();
+                            body.append('csrf_token', CSRF);
+                            Object.keys(data || {}).forEach(function (k) { body.append(k, data[k]); });
+                        }
+                        return fetch(BASE + path, {
+                            method: 'POST', credentials: 'same-origin',
+                            headers: isForm ? {} : {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+                            body: body
+                        }).then(function (r) { return r.json(); });
+                    }
+
+                    // ---------------- 离线队列 ----------------
+                    function getJSON(key) { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; } }
+                    function setJSON(key, v) { localStorage.setItem(key, JSON.stringify(v)); updateBadge(); }
+                    function updateBadge() {
+                        var n = getJSON(QUEUE_KEY).length + getJSON(PHOTO_KEY).length;
+                        var online = navigator.onLine;
+
+                        var b = document.getElementById('queue-badge');
+                        if (b) {
+                            b.style.display = n ? 'inline-block' : 'none';
+                            b.textContent = '待上传 ' + n;
+                        }
+                        // + 号圆块：
+                        //   有待上传 -> 显示数字 + 琥珀色 + 呼吸更快
+                        //   离线     -> 变灰、停止呼吸
+                        //   都恢复   -> 自动变回 + 号
+                        var btn = document.getElementById('btn-quick-scan');
+                        if (btn) {
+                            btn.textContent = n ? (n > 99 ? '99+' : String(n)) : '＋';
+                            if (n > 0) { btn.classList.add('has-pending'); }
+                            else { btn.classList.remove('has-pending'); }
+                            if (online) { btn.classList.remove('offline'); }
+                            else { btn.classList.add('offline'); }
+                            btn.setAttribute('title', n ? ('待上传 ' + n) : '扫码');
+                        }
+                        var net = document.getElementById('net');
+                        if (net) { net.textContent = online ? '在线' : '离线'; }
+                    }
+                    function queued(path, data, label) {
+                        return post(path, data).catch(function () {
+                            var q = getJSON(QUEUE_KEY);
+                            q.push({path: path, data: data, label: label, at: Date.now()});
+                            setJSON(QUEUE_KEY, q);
+                            return {ok: false, queued: true};
+                        });
+                    }
+                    function flushQueue() {
+                        var q = getJSON(QUEUE_KEY);
+                        if (!q.length) { flushPhotos(); return; }
+                        var item = q[0];
+                        post(item.path, item.data).then(function (res) {
+                            q.shift(); setJSON(QUEUE_KEY, q);
+                            toast(res && res.error ? ('补传失败：' + res.error) : ('已补传：' + (item.label || '')));
+                            if (q.length) { setTimeout(flushQueue, 400); } else { flushPhotos(); }
+                        }).catch(function () { });
+                    }
+                    function flushPhotos() {
+                        var q = getJSON(PHOTO_KEY);
+                        if (!q.length) { updateBadge(); return; }
+                        var item = q[0];
+                        var fd = new FormData();
+                        fd.append('csrf_token', CSRF);
+                        fd.append('qr_id', item.qr_id);
+                        fd.append('kind', item.kind);
+                        fd.append('photo', dataURLtoBlob(item.data), 'photo.jpg');
+                        fetch(BASE + '/photo', {method: 'POST', credentials: 'same-origin', body: fd})
+                            .then(function (r) { return r.json(); })
+                            .then(function (res) {
+                                if (res && (res.ok || res.error)) {
+                                    q.shift(); setJSON(PHOTO_KEY, q);
+                                    toast(res.ok ? '照片已补传' : ('照片补传失败：' + res.error));
+                                    if (q.length) { setTimeout(flushPhotos, 400); }
+                                }
+                            }).catch(function () { });
+                    }
+                    function dataURLtoBlob(dataURL) {
+                        var parts = dataURL.split(','), mime = parts[0].match(/:(.*?);/)[1];
+                        var bin = atob(parts[1]), arr = new Uint8Array(bin.length);
+                        for (var i = 0; i < bin.length; i++) { arr[i] = bin.charCodeAt(i); }
+                        return new Blob([arr], {type: mime});
+                    }
+
+                    // ---------------- 摄像头（ZXing：二维码 + 一维码 + 快递单 Code128） ----------------
+                    function stopCamera() {
+                        scanning = false;
+                        if (raf) { clearTimeout(raf); raf = null; }
+                        if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+                        video.srcObject = null;
+                        document.getElementById('scan-box').style.display = 'none';
+                        document.getElementById('btn-start').style.display = 'block';
+                        document.getElementById('btn-stop').style.display = 'none';
+                    }
+                    function buildHints() {
+                        if (!window.ZXing) { return null; }
+                        var hints = new Map();
+                        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+                        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+                            ZXing.BarcodeFormat.QR_CODE,
+                            ZXing.BarcodeFormat.CODE_128,
+                            ZXing.BarcodeFormat.CODE_39,
+                            ZXing.BarcodeFormat.CODE_93,
+                            ZXing.BarcodeFormat.CODABAR,
+                            ZXing.BarcodeFormat.EAN_13,
+                            ZXing.BarcodeFormat.EAN_8,
+                            ZXing.BarcodeFormat.UPC_A,
+                            ZXing.BarcodeFormat.UPC_E,
+                            ZXing.BarcodeFormat.ITF,
+                            ZXing.BarcodeFormat.DATA_MATRIX,
+                            ZXing.BarcodeFormat.PDF_417,
+                            ZXing.BarcodeFormat.AZTEC
+                        ]);
+                        return hints;
+                    }
+                    function onDecoded(text) {
+                        if (!text) { return; }
+                        var mode = scanMode;
+                        stopCamera();
+                        scanMode = 'qr';
+                        if (mode === 'sn') {
+                            document.getElementById('newqr-sn').value = text;
+                            toast('已扫到条码：' + text);
+                            return;
+                        }
+                        handleCode(text);
+                    }
+                    function startCamera(mode) {
+                        scanMode = mode || 'qr';
+                        if (scanning) { return; }
+                        if (/MicroMessenger|QQ\/|Weibo|AlipayClient/i.test(navigator.userAgent)) {
+                            document.getElementById('cam-hint').innerHTML =
+                                '<b style="color:#c0392b">微信/QQ 内置浏览器禁止摄像头</b>，请用系统浏览器或本 App 打开。';
+                            return;
+                        }
+                        if (!window.isSecureContext) { toast('必须用 https:// 打开'); return; }
+                        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                            toast('这台手机不支持摄像头'); return;
+                        }
+                        var box = document.getElementById('scan-box');
+                        box.style.display = 'block';
+                        video.style.display = 'block';
+                        document.getElementById('scan-hud').textContent = '正在打开摄像头…';
+                        document.getElementById('btn-start').style.display = 'none';
+                        document.getElementById('btn-stop').style.display = 'block';
+                        // 看门狗：2.5 秒还没有画面，说明取流失败（权限/占用/WebView 限制）
+                        clearTimeout(window.__camWatch);
+                        window.__camWatch = setTimeout(function () {
+                            if (!video.videoWidth) {
+                                document.getElementById('scan-hud').textContent =
+                                    '⚠ 没有拿到画面（vid0）—— 检查摄像头权限后重试';
+                            }
+                        }, 2500);
+
+                        // ZXing 只负责"解码"（本地、离线）；取流和循环由我们自己控制，
+                        // 这样能显示扫描线、帧计数，并且失败也不影响继续扫描。
+                        if (!zxReader && window.ZXing) {
+                            try { zxReader = new ZXing.BrowserMultiFormatReader(buildHints()); }
+                            catch (e) { zxReader = null; }
+                        }
+                        if (!window.ZXing) {
+                            document.getElementById('cam-hint').innerHTML =
+                                '<b style="color:#c0392b">⚠ ZXing 本地库没加载成功</b>（只退回二维码识别）。' +
+                                '请检查网络后彻底关掉 App 重开；仍不行告我。';
+                        }
+
+                        navigator.mediaDevices.getUserMedia({
+                            video: {facingMode: {ideal: 'environment'},
+                                    width: {ideal: 1920}, height: {ideal: 1080}},
+                            audio: false
+                        }).then(function (s) {
+                            stream = s;
+                            video.srcObject = s;
+                            video.setAttribute('playsinline', 'true');
+                            return video.play();
+                        }).then(function () {
+                            scanning = true;
+                            frames = 0;
+                            clearTimeout(window.__camWatch);
+                            document.getElementById('scan-hud').textContent =
+                                '正在扫描… ' + (video.videoWidth || 0) + '×' + (video.videoHeight || 0);
+                            scanLoop();
+                        }).catch(function (err) {
+                            var name = (err && err.name) ? err.name : 'UnknownError';
+                            document.getElementById('cam-hint').innerHTML =
+                                '<b style="color:#c0392b">摄像头打不开：' + name + '</b>（' +
+                                ({NotAllowedError: '授权被拒绝，去设置里允许摄像头',
+                                  NotFoundError: '没有摄像头', NotReadableError: '摄像头被其它应用占用',
+                                  SecurityError: '安全策略禁止'}[name] || '未知原因') + '）';
+                            stopCamera();
+                        });
+                    }
+                    function scanLoop() {
+                        if (!scanning) { return; }
+                        try {
+                            if (video.readyState >= 2 && video.videoWidth) {
+                                if (!ctx2d) { ctx2d = canvas.getContext('2d', {willReadFrequently: true}); }
+                                var vw = video.videoWidth, vh = video.videoHeight;
+                                // 一维码（快递单）对水平分辨率敏感，尽量不缩放
+                                var scale = Math.min(1, 1920 / (vw || 1920));
+                                canvas.width = Math.round(vw * scale);
+                                canvas.height = Math.round(vh * scale);
+                                ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                frames += 1;
+                                var text = decodeFrame(ctx2d);
+                                if (frames % 3 === 0) {
+                                    document.getElementById('scan-hud').textContent =
+                                        '正在扫描… 第 ' + frames + ' 帧 · ' + vw + '×' + vh +
+                                        '（' + (window.ZXing ? 'ZXing 本地解码' : '仅二维码模式') +
+                                        '）';
+                                }
+                                if (text) { onDecoded(text); return; }
+                            }
+                        } catch (e) { }
+                        raf = setTimeout(scanLoop, 150);
+                    }
+                    function decodeFrame(ctx) {
+                        // 1) ZXing：二维码 + 一维码（快递单 Code128 等）
+                        if (zxReader) {
+                            try {
+                                var result = zxReader.decodeFromCanvas(canvas);
+                                if (result && result.getText()) { return result.getText(); }
+                            } catch (e) { /* 没扫到就是常态，继续下一帧 */ }
+                        }
+                        // 2) 退路：jsQR 只认二维码（部分老 WebView 没有 ZXing）
+                        if (!zxReader && window.jsQR) {
+                            try {
+                                var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                var found = window.jsQR(img.data, img.width, img.height,
+                                                        {inversionAttempts: 'attemptBoth'});
+                                if (found && found.data) { return found.data; }
+                            } catch (e) { }
+                        }
+                        return null;
+                    }
+
+                    // ---------------- 板件信息 ----------------
+                    function kv(label, value) {
+                        return '<div class="kv"><span>' + label + '</span><b>' + esc(value || '-') + '</b></div>';
+                    }
+                    function stateTag(state) {
+                        var cls = STATE_CLASS[state] || 'muted';
+                        return '<span class="tag ' + cls + '">' + esc(state) + '</span>';
+                    }
+                    function renderQr(q) {
+                        currentQr = q;
+                        var html = '';
+                        html += kv('二维码', q.name);
+                        html += kv('客户', q.customer);
+                        html += kv('机台', q.machine);
+                        html += kv('板件型号', q.product);
+                        html += kv('包月', (q.monthly_start || '-') + ' ~ ' + (q.monthly_end || '-'));
+                        html += '<div class="kv"><span>保修</span><b>' +
+                                '<span class="tag ' + (q.in_warranty ? 'ok' : 'bad') + '">' +
+                                esc(q.warranty_state) + '</span> ' + esc(q.warranty_end || '') + '</b></div>';
+                        html += kv('已维修次数', q.repair_count);
+                        document.getElementById('qr-kv').innerHTML = html;
+
+                        var photos = q.photos || {front: 0, back: 0, detail: 0};
+                        var photoList = q.photo_list || [];
+                        var kindLabel = {front: '正面', back: '反面', detail: '局部'};
+                        var thumbHtml = '';
+                        if (photoList.length) {
+                            // 已上传的照片按类型分组，直接显示缩略图（点击看大图）
+                            ['front', 'back', 'detail'].forEach(function (kind) {
+                                var group = photoList.filter(function (p) { return p.kind === kind; });
+                                if (!group.length) { return; }
+                                thumbHtml += '<div style="width:100%;margin-top:6px">' +
+                                    '<span class="tag ' + (kind === 'detail' ? 'info' : 'ok') + '">' +
+                                    kindLabel[kind] + ' ' + group.length + '</span>' +
+                                    '<div class="thumbs">' + group.map(function (p) {
+                                        var big = (window.location.origin + p.url).replace('image_256', 'image_1024');
+                                        var small = window.location.origin + p.url + '?v=' + p.id;
+                                        return '<a href="' + big + '" target="_blank">' +
+                                            '<img src="' + small + '" ' +
+                                            'onerror="this.style.display=\'none\'; this.nextSibling.style.display=\'block\';"/>' +
+                                            '<span style="display:none;font-size:11px;color:#c0392b">加载失败</span></a>';
+                                    }).join('') + '</div></div>';
+                            });
+                        }
+                        document.getElementById('thumbs').innerHTML =
+                            '<span class="tag ' + (photos.front ? 'ok' : 'bad') + '">正面 ' + photos.front + '</span>' +
+                            '<span class="tag ' + (photos.back ? 'ok' : 'bad') + '">反面 ' + photos.back + '</span>' +
+                            '<span class="tag info">局部 ' + photos.detail + '</span>' + thumbHtml;
+
+                        var hist = q.history || [];
+                        document.getElementById('history-box').innerHTML = hist.length
+                            ? '<div class="hint">维修履历：</div>' + hist.map(function (h) {
+                                return '<div class="history-item">' + esc(h.date) + ' · ' + esc(h.name) +
+                                    ' · ' + stateTag(h.state) +
+                                    (h.technician ? ' · ' + esc(h.technician) : '') +
+                                    (h.fault ? ' · ' + esc(h.fault) : '') + '</div>';
+                            }).join('')
+                            : '<div class="hint">还没有维修记录（首次维修）</div>';
+
+                        // 未完成工单：可直接抢单 / 接力
+                        var openOrders = q.orders || [];
+                        var claimHtml = '';
+                        if (openOrders.length) {
+                            claimHtml += '<div class="hint" style="margin-top:8px">这块板有未完成的工单，可直接抢单或完工：</div>';
+                            openOrders.forEach(function (o) {
+                                claimHtml += '<div class="order"><div class="info"><b>' + esc(o.name) +
+                                    '</b> ' + stateTag(o.state) + '<br/>' + esc(o.urgency) +
+                                    ' · 期限 ' + esc(o.deadline) +
+                                    (o.technician ? ' · ' + esc(o.technician) : '') + '</div><div class="row">' +
+                                    (o.claimable
+                                        ? '<button class="btn small" data-claim="' + o.id + '">' +
+                                          (o.state_key === 'timeout_alert' ? '接力抢单' : '抢单') + '</button>'
+                                        : '') +
+                                    '<button class="btn small ok" data-complete="' + o.id + '">完工</button>' +
+                                    '</div></div>';
+                            });
+                        }
+                        document.getElementById('claim-box').innerHTML = claimHtml;
+
+                        // 一周内刚完工：只提醒，不拦截
+                        var warn = document.getElementById('repeat-warn');
+                        if (q.recent_done) {
+                            warn.style.display = 'block';
+                            warn.innerHTML = '⚠ 这块板 <b>' + esc(q.recent_done.date) + '</b> 刚完工（单号 ' +
+                                esc(q.recent_done.order) +
+                                (q.recent_done.technician ? '，师傅 ' + esc(q.recent_done.technician) : '') +
+                                '），距今 <b>' + q.recent_done.days + ' 天</b>。<br/>' +
+                                '如果器件还没交付/寄回，就不必再开单；确实需要重开，请继续操作。';
+                        } else {
+                            warn.style.display = 'none';
+                        }
+
+                        document.getElementById('photo-block').style.display =
+                            q.has_photos ? 'none' : 'block';
+                        document.getElementById('result').style.display = 'block';
+                        document.getElementById('result').scrollIntoView({behavior: 'smooth'});
+                    }
+                    function handleCode(code) {
+                        lastCode = code;
+                        post('/scan', {code: code}).then(function (res) {
+                            if (res.ok) { renderQr(res.qr); return; }
+                            document.getElementById('result').style.display = 'none';
+                            currentQr = null;
+                            if (res.switch_to_new) {
+                                // 不是本系统的码（快递单/商品条码/原厂码）→ 切到「生码建单」
+                                lastCode = null;
+                                switchTab('new');
+                                document.getElementById('newqr-sn').value = res.code || '';
+                                toast(res.hint || '不是本系统的码：请先生成二维码');
+                                var card = document.getElementById('newqr-card');
+                                card.scrollIntoView({behavior: 'smooth'});
+                                document.getElementById('newqr-q').focus();
+                                return;
+                            }
+                            toast(res.hint || res.error || '没有找到这张码');
+                        });
+                    }
+
+                    // ---------------- 拍照 ----------------
+                    function compressImage(file) {
+                        return new Promise(function (resolve) {
+                            var img = new Image();
+                            var url = URL.createObjectURL(file);
+                            img.onload = function () {
+                                var max = 1600, w = img.width, h = img.height;
+                                if (w > max || h > max) {
+                                    var ratio = Math.min(max / w, max / h);
+                                    w = Math.round(w * ratio); h = Math.round(h * ratio);
+                                }
+                                var c = document.createElement('canvas');
+                                c.width = w; c.height = h;
+                                c.getContext('2d').drawImage(img, 0, 0, w, h);
+                                URL.revokeObjectURL(url);
+                                resolve(c.toDataURL('image/jpeg', 0.78));
+                            };
+                            img.onerror = function () { resolve(null); };
+                            img.src = url;
+                        });
+                    }
+                    function uploadPhoto(qrId, kind, dataUrl) {
+                        var fd = new FormData();
+                        fd.append('csrf_token', CSRF);
+                        fd.append('qr_id', qrId);
+                        fd.append('kind', kind);
+                        fd.append('photo', dataURLtoBlob(dataUrl), 'photo.jpg');
+                        return fetch(BASE + '/photo', {method: 'POST', credentials: 'same-origin', body: fd})
+                            .then(function (r) { return r.json(); });
+                    }
+
+                    // ---------------- 工单 ----------------
+                    function orderRow(o, withClaim) {
+                        var html = '<div class="order" data-detail="' + o.id + '"><div class="info"><b>' + esc(o.name) + '</b> ' +
+                            stateTag(o.state) + '<br/>' +
+                            esc(o.urgency) + ' · ' + esc(o.machine || '-') +
+                            (o.partner ? ' · ' + esc(o.partner) : '') +
+                            '<br/>期限 ' + esc(o.deadline || '-') +
+                            (o.overdue ? ' <span class="tag bad">超期</span>' : '') +
+                            (o.invoiced ? ' <span class="tag ok">已开票</span>' : '') +
+                            (o.has_photos ? '' : ' <span class="tag warn">缺正反面照片</span>') +
+                            '</div><div class="row">' +
+                            '<button class="btn small ghost" data-detail="' + o.id + '">详情</button>';
+                        if (withClaim) {
+                            html += '<button class="btn small" data-claim="' + o.id + '">抢单</button>';
+                        } else {
+                            if (o.can_complete) {
+                                html += '<button class="btn small ok" data-complete="' + o.id + '">完工</button>';
+                            }
+                            if (window.__canInvoice && !o.invoiced &&
+                                (o.state === '已完工' || o.state === '接力完工')) {
+                                html += '<button class="btn small" data-invoice="' + o.id + '">开票</button>';
+                            }
+                        }
+                        html += '</div></div>';
+                        return html;
+                    }
+                    function loadOrders() {
+                        post('/my_orders', {}).then(function (res) {
+                            if (!res.ok) { toast(res.error || '读不到工单'); return; }
+                            window.__canInvoice = !!res.can_invoice;
+                            document.getElementById('mine').innerHTML = res.mine.length
+                                ? res.mine.map(function (o) { return orderRow(o, false); }).join('')
+                                : '<div class="empty">暂无进行中的工单</div>';
+                            document.getElementById('pending').innerHTML = res.pending.length
+                                ? res.pending.map(function (o) { return orderRow(o, true); }).join('')
+                                : '<div class="empty">没有待抢的工单</div>';
+                            updateBadge();
+                        }).catch(function () { toast('当前离线'); updateBadge(); });
+                    }
+
+                    // ---------------- 新建二维码 ----------------
+                    function searchNewQrCustomers() {
+                        var q = document.getElementById('newqr-q').value.trim();
+                        post('/customers', {q: q}).then(function (res) {
+                            var box = document.getElementById('newqr-customers');
+                            if (!res.ok || !res.customers.length) {
+                                box.innerHTML = '<div class="empty">没找到客户</div>'; return;
+                            }
+                            box.innerHTML = '';
+                            res.customers.forEach(function (c) {
+                                box.innerHTML += '<button class="btn ghost" data-newcust="' + c.id +
+                                    '" style="margin-bottom:6px">' + esc(c.name) + '</button>';
+                            });
+                        });
+                    }
+                    function createQr() {
+                        if (!pickedPartner) { toast('先选客户'); return; }
+                        var sn = document.getElementById('newqr-sn').value.trim();
+                        var machineSel = document.getElementById('newqr-machine');
+                        var productSel = document.getElementById('newqr-product');
+                        post('/new_qr', {
+                            partner_id: pickedPartner,
+                            sn: sn,
+                            machine_id: machineSel ? machineSel.value : '',
+                            product_id: productSel ? productSel.value : ''
+                        }).then(function (res) {
+                            if (!res.ok) { toast(res.error || '生成失败'); return; }
+                            toast('已生成 ' + res.qr.name);
+                            newQr = res.qr;
+                            lastCode = res.qr.name;
+                            document.getElementById('newqr-actions').style.display = 'flex';
+                            document.getElementById('newqr-result').innerHTML =
+                                (res.qr.qr_image
+                                    ? '<img src="data:image/png;base64,' + res.qr.qr_image +
+                                      '" style="width:160px;height:160px;border:1px solid #eee;border-radius:8px"/>'
+                                    : '') +
+                                '<div class="hint">编号：<b>' + esc(res.qr.name) + '</b>（已建好，接下来拍照 → 开工单）</div>';
+                            renderQr(res.qr);
+                        });
+                    }
+                    function createOrder(urgency) {
+                        if (!lastCode) { toast('先扫码或生成二维码'); return; }
+                        var payload = {code: lastCode, urgency: urgency};
+                        if (pickedPartner) { payload.partner_id = pickedPartner; }
+                        if (currentQr && currentQr.id) { payload.qr_id = currentQr.id; }
+                        // 机台/板件型号：取生码建单页当前选择（即使码是更早生成的）
+                        var mSel = document.getElementById('newqr-machine');
+                        var pSel = document.getElementById('newqr-product');
+                        if (mSel && mSel.value) { payload.machine_id = mSel.value; }
+                        if (pSel && pSel.value) { payload.product_id = pSel.value; }
+                        // 两个分栏都有输入框，哪个有值用哪个（之前只读扫码页，导致生码建单填的不保存）
+                        var pick = function (a, b) {
+                            var ea = document.getElementById(a), eb = document.getElementById(b);
+                            var va = ea && ea.value ? ea.value.trim() : '';
+                            var vb = eb && eb.value ? eb.value.trim() : '';
+                            return va || vb;
+                        };
+                        var saved = {};
+                        try { saved = JSON.parse(localStorage.getItem('mr_form_v1') || '{}'); } catch (e) { }
+                        var errVal = pick('err-code', 'new-qr-err') || (saved.err || '');
+                        var faultVal = pick('fault-desc', 'new-qr-fault') || (saved.fault || '');
+                        if (errVal) { payload.error_code = errVal; }
+                        if (faultVal) { payload.fault = faultVal; }
+                        queued('/create_order', payload, '开单').then(function (res) {
+                            if (res.queued) { toast('网络不稳，已存本地'); return; }
+                            if (res.need_photos) {
+                                document.getElementById('photo-block').style.display = 'block';
+                                toast('请先拍正反面照片');
+                                return;
+                            }
+                            if (res.need_customer) {
+                                toast('库里没有这张码：先在"新板"里生成二维码');
+                                return;
+                            }
+                            if (!res.ok) { toast(res.error || '建单失败'); return; }
+                            toast('已开单：' + res.order_name);
+                            // 补写一次错误代码/故障（防止建单时没带上）
+                            if (res.order_id && (payload.error_code || payload.fault)) {
+                                post('/save_work', {order_id: res.order_id,
+                                    error_code: payload.error_code || '',
+                                    fault: payload.fault || ''}).catch(function () { });
+                            }
+                            // 重置界面，避免误以为没建成功
+                            currentQr = null; lastCode = null; newQr = null;
+                            document.getElementById('result').style.display = 'none';
+                            ['err-code', 'fault-desc', 'new-qr-err', 'new-qr-fault', 'newqr-sn', 'manual'].forEach(function (id) {
+                                var e = document.getElementById(id); if (e) { e.value = ''; }
+                            });
+                            document.getElementById('newqr-result').innerHTML = '';
+                            document.getElementById('newqr-actions').style.display = 'none';
+                            document.getElementById('newqr-customers').innerHTML = '';
+                            try { localStorage.removeItem('mr_form_v1'); } catch (e) { }
+                            switchTab('new');
+                            loadOrders();
+                        });
+                    }
+                    function completeOrder(id) {
+                        askConfirm('确认已修好并提交完工？', function () { doComplete(id); });
+                    }
+                    function doComplete(id) {
+                        queued('/complete', {order_id: id}, '完工').then(function (res) {
+                            if (res.queued) { toast('已存本地，恢复后补传'); return; }
+                            if (!res.ok) { toast(res.error || '完工失败'); return; }
+                            toast('已完工：' + res.order_name);
+                            loadOrders();
+                        });
+                    }
+                    function invoiceOrder(id) {
+                        askConfirm('确认开票？', function () { doInvoice(id); });
+                    }
+                    function doInvoice(id) {
+                        queued('/invoice', {order_id: id}, '开票').then(function (res) {
+                            if (res.queued) { toast('已存本地，恢复后补传'); return; }
+                            if (!res.ok) { toast(res.error || '开票失败'); return; }
+                            toast('已开票：' + res.invoice + ' / ' + res.amount);
+                            loadOrders();
+                        });
+                    }
+
+                    // ---------------- 事件 ----------------
+                    function switchTab(which) {
+                        document.querySelectorAll('.tab').forEach(function (tab) {
+                            if (tab.getAttribute('data-tab') === which) { tab.classList.add('active'); }
+                            else { tab.classList.remove('active'); }
+                        });
+                        document.getElementById('panel-task').style.display =
+                            (which === 'task') ? 'block' : 'none';
+                        document.getElementById('panel-scan').style.display =
+                            (which === 'scan') ? 'block' : 'none';
+                        document.getElementById('panel-new').style.display =
+                            (which === 'new') ? 'block' : 'none';
+                        // 板件信息卡只属于扫码/生码；回到扫码页时若仍有当前板件则恢复显示
+                        if (which === 'task') {
+                            document.getElementById('result').style.display = 'none';
+                        } else if (which === 'scan' && currentQr) {
+                            document.getElementById('result').style.display = 'block';
+                        }
+                        if (which !== 'scan') { stopCamera(); }
+                        if (which === 'task') { loadOrders(); }
+                        // 双保险：面板若因任何原因仍不可见，强制显示
+                        var current = document.getElementById('panel-' + which);
+                        if (current && current.style.display === 'none') {
+                            current.style.display = 'block';
+                        }
+                    }
+                    document.querySelectorAll('.tab').forEach(function (tab) {
+                        tab.addEventListener('click', function () { switchTab(tab.getAttribute('data-tab')); });
+                    });
+                    document.getElementById('btn-start').addEventListener('click', function () {
+                        if (NATIVE) { NATIVE.scan(); return; }
+                        startCamera('qr');
+                    });
+                    document.getElementById('btn-stop').addEventListener('click', stopCamera);
+                    document.getElementById('btn-scan-sn').addEventListener('click', function () {
+                        if (NATIVE) { NATIVE.scanSn(); return; }
+                        startCamera('sn');
+                        document.getElementById('video').scrollIntoView({behavior: 'smooth'});
+                    });
+                    // 粘贴：读取剪贴板内容填进输入框（需要用户手势 + https）
+                    document.getElementById('btn-paste').addEventListener('click', function () {
+                        var input = document.getElementById('manual');
+                        if (navigator.clipboard && navigator.clipboard.readText) {
+                            navigator.clipboard.readText().then(function (txt) {
+                                txt = (txt || '').trim();
+                                if (txt) { input.value = txt; toast('已粘贴'); }
+                                else { toast('剪贴板是空的'); }
+                            }).catch(function () {
+                                toast('没有剪贴板权限：请长按输入框手动粘贴');
+                                input.focus();
+                            });
+                        } else {
+                            toast('这台手机不支持一键粘贴：请长按输入框手动粘贴');
+                            input.focus();
+                        }
+                    });
+                    document.getElementById('btn-manual').addEventListener('click', function () {
+                        var v = document.getElementById('manual').value.trim();
+                        if (v) { handleCode(v); }
+                    });
+                    document.getElementById('btn-refresh').addEventListener('click', loadOrders);
+                    document.getElementById('btn-new-qr').addEventListener('click', createQr);
+
+                    // 选客户 -> 加载该客户的机台
+                    function loadMachines() {
+                        var sel = document.getElementById('newqr-machine');
+                        var prodSel = document.getElementById('newqr-product');
+                        if (!sel) { return; }
+                        sel.innerHTML = '<option value="">（选择机台）</option>';
+                        if (prodSel) { prodSel.innerHTML = '<option value="">（先选机台）</option>'; }
+                        if (!pickedPartner) { return; }
+                        post('/machines', {partner_id: pickedPartner}).then(function (res) {
+                            if (!res.ok) { return; }
+                            if (!res.machines.length) {
+                                sel.innerHTML = '<option value="">（该客户还没有机台）</option>';
+                                return;
+                            }
+                            sel.innerHTML = '<option value="">（选择机台）</option>' +
+                                res.machines.map(function (m) {
+                                    return '<option value="' + m.id + '">' + esc(m.no) +
+                                        (m.model ? ' · ' + esc(m.model) : '') + '</option>';
+                                }).join('');
+                        });
+                    }
+
+                    // 选机台 -> 加载板件型号（机型专属排最前）
+                    function loadBoards() {
+                        var sel = document.getElementById('newqr-product');
+                        var mSel = document.getElementById('newqr-machine');
+                        if (!sel) { return; }
+                        sel.innerHTML = '<option value="">（加载中…）</option>';
+                        post('/boards', {machine_id: mSel ? mSel.value : ''}).then(function (res) {
+                            if (!res.ok || !res.boards.length) {
+                                sel.innerHTML = '<option value="">（还没有电路板产品）</option>';
+                                return;
+                            }
+                            var head = '';
+                            var modelBoards = res.boards.filter(function (b) { return b.is_model; });
+                            var otherBoards = res.boards.filter(function (b) { return !b.is_model; });
+                            if (modelBoards.length) {
+                                head += '<optgroup label="★ 本机型专属电路板">' +
+                                    modelBoards.map(function (b) {
+                                        return '<option value="' + b.id + '">★ ' + esc(b.name) + '</option>';
+                                    }).join('') + '</optgroup>';
+                            }
+                            if (otherBoards.length) {
+                                head += '<optgroup label="其它电路板">' +
+                                    otherBoards.map(function (b) {
+                                        return '<option value="' + b.id + '">' + esc(b.name) + '</option>';
+                                    }).join('') + '</optgroup>';
+                            }
+                            sel.innerHTML = '<option value="">（选择板件型号）</option>' + head;
+                        });
+                    }
+                    document.getElementById('newqr-machine').addEventListener('change', loadBoards);
+                    document.getElementById('newqr-q').addEventListener('input', function () {
+                        clearTimeout(window.__nq);
+                        window.__nq = setTimeout(searchNewQrCustomers, 350);
+                    });
+                    // 紧急度只是"选择"，真正建单由下面的「确定建单」按钮触发
+                    document.querySelectorAll('[data-urgency]').forEach(function (b) {
+                        b.addEventListener('click', function () {
+                            urgency = b.getAttribute('data-urgency');
+                            document.querySelectorAll('[data-urgency]').forEach(function (x) {
+                                if (x === b) { x.classList.add('sel'); x.classList.remove('ghost'); }
+                                else { x.classList.remove('sel'); x.classList.add('ghost'); }
+                            });
+                            toast('已选：' + b.textContent);
+                        });
+                    });
+                    // 确定建单
+                    document.getElementById('btn-confirm-order').addEventListener('click', function () {
+                        if (!currentQr) { toast('请先扫码'); return; }
+                        if (!currentQr.has_photos) {
+                            document.getElementById('photo-block').style.display = 'block';
+                            toast('请先拍正反面照片，再确定建单');
+                            return;
+                        }
+                        createOrder(urgency);
+                    });
+                    // 取消：清掉当前板件，不建单
+                    document.getElementById('btn-cancel-order').addEventListener('click', function () {
+                        currentQr = null;
+                        lastCode = null;
+                        document.getElementById('result').style.display = 'none';
+                        document.getElementById('qr-kv').innerHTML = '';
+                        document.getElementById('photo-block').style.display = 'none';
+                        toast('已取消');
+                    });
+                    // 新板：确定 → 采用这张码，切到扫码建单页继续拍照/建单
+                    document.getElementById('btn-newqr-ok').addEventListener('click', function () {
+                        if (!newQr) { toast('请先生成二维码'); return; }
+                        lastCode = newQr.name;
+                        switchTab('scan');
+                        renderQr(newQr);
+                        toast('已采用 ' + newQr.name + '，请拍正反面后确定建单');
+                    });
+                    // 新板：取消 → 放弃这张码（还没照片/工单就删掉，避免垃圾数据）
+                    document.getElementById('btn-newqr-cancel').addEventListener('click', function () {
+                        if (!newQr) { toast('还没有生成二维码'); return; }
+                        var qrId = newQr.id;
+                        post('/discard_qr', {qr_id: qrId}).then(function (res) {
+                            if (!res.ok) { toast(res.error || '取消失败'); return; }
+                            newQr = null;
+                            document.getElementById('newqr-result').innerHTML = '';
+                            document.getElementById('newqr-actions').style.display = 'none';
+                            toast('已放弃这张码');
+                        });
+                    });
+                    document.getElementById('photo-input').addEventListener('change', function (ev) {
+                        var file = ev.target.files && ev.target.files[0];
+                        ev.target.value = '';
+                        if (!file || !currentQr || !pendingKind) { return; }
+                        var kind = pendingKind, qrId = currentQr.id;
+                        pendingKind = null;
+                        compressImage(file).then(function (dataUrl) {
+                            if (!dataUrl) { toast('图片处理失败'); return; }
+                            uploadPhoto(qrId, kind, dataUrl).then(function (res) {
+                                if (!res.ok) { toast(res.error || '上传失败'); return; }
+                                toast('已上传' + ({front: '正面', back: '反面', detail: '局部'}[kind] || ''));
+                                // 关键：以服务器为准刷新（原来只改本地字段，会出现"照片传了却提示缺正反面"）
+                                var code = lastCode || (currentQr && currentQr.name);
+                                if (code) {
+                                    post('/scan', {code: code}).then(function (r2) {
+                                        if (r2.ok && r2.qr) { renderQr(r2.qr); }
+                                    });
+                                } else {
+                                    currentQr.has_photos = res.has_photos;
+                                    renderQr(currentQr);
+                                }
+                            }).catch(function () {
+                                var q = getJSON(PHOTO_KEY);
+                                q.push({qr_id: qrId, kind: kind, data: dataUrl, at: Date.now()});
+                                setJSON(PHOTO_KEY, q);
+                                toast('网络不稳，照片已存本地，恢复后自动上传');
+                            });
+                        });
+                    });
+                    document.addEventListener('click', function (ev) {
+                        var el = ev.target;
+                        if (!el || !el.getAttribute) { return; }
+                        var v;
+                        if ((v = el.getAttribute('data-photo-kind'))) {
+                            if (!currentQr) { toast('先扫码'); return; }
+                            pendingKind = v;
+                            if (NATIVE && NATIVE.takePhoto) {
+                                NATIVE.takePhoto(v);          // App 内原生拍照：一步到位
+                            } else {
+                                document.getElementById('photo-input').click();   // 浏览器退路
+                            }
+                            return;
+                        }
+                        if ((v = el.getAttribute('data-newcust'))) {
+                            pickedPartner = v;
+                            var nameText = el.textContent;
+                            var qEl = document.getElementById('newqr-q');
+                            if (qEl) { qEl.value = ''; qEl.placeholder = '已选客户：' + nameText + '（点此重新搜索）'; }
+                            var listEl = document.getElementById('newqr-customers');
+                            if (listEl) { listEl.innerHTML = '<div class="hint" style="color:#1e7b45">✓ 已选：' + nameText + '</div>'; }
+                            document.getElementById('btn-new-qr').disabled = false;
+                            loadMachines();
+                            toast('已选客户：' + nameText);
+                            return;
+                        }
+                        if ((v = el.getAttribute('data-claim'))) {
+                            askConfirm('确定要抢这张工单吗？\n抢单后请按时完成，超时会转给其他人接力。', function () {
+                                post('/claim', {order_id: v}).then(function (res) {
+                                    if (!res.ok) { toast(res.error || '抢单失败'); return; }
+                                    toast('已抢到 ' + res.order_name); loadOrders();
+                                });
+                            });
+                            return;
+                        }
+                        if ((v = el.getAttribute('data-detail'))) {
+                            openOrder(v); return;
+                        }
+                        if ((v = el.getAttribute('data-complete'))) { completeOrder(v); return; }
+                        if ((v = el.getAttribute('data-invoice'))) { invoiceOrder(v); return; }
+                    });
+                    window.addEventListener('online', function () {
+                        updateBadge(); toast('网络已恢复，开始补传'); flushQueue();
+                    });
+                    window.addEventListener('offline', function () {
+                        updateBadge(); toast('当前离线，操作先存本地');
+                    });
+                    if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.register('/machine_repair/mobile/sw.js',
+                            {scope: '/machine_repair/mobile/'}).catch(function () { });
+                    }
+                    // ---------------- 底部导航 ----------------
+                    function switchView(name) {
+                        ['wo', 'msg', 'case', 'me'].forEach(function (v) {
+                            var el = document.getElementById('view-' + v);
+                            if (el) { el.style.display = (v === name) ? 'block' : 'none'; }
+                        });
+                        document.querySelectorAll('.bottomnav [data-view]').forEach(function (b) {
+                            if (b.getAttribute('data-view') === name) { b.classList.add('active'); }
+                            else { b.classList.remove('active'); }
+                        });
+                        var header = document.getElementById('app-header');
+                        if (header) { header.style.display = (name === 'me') ? 'block' : 'none'; }
+                        if (name !== 'wo') { stopCamera(); }
+                        if (name === 'msg') { loadTimeline(); }
+                        if (name === 'case') { loadCases(); }
+                        if (name === 'me') { loadOrders(); }
+                        window.scrollTo(0, 0);
+                    }
+                    document.querySelectorAll('.bottomnav [data-view]').forEach(function (b) {
+                        b.addEventListener('click', function () {
+                            switchView(b.getAttribute('data-view'));
+                        });
+                    });
+                    document.getElementById('btn-quick-scan').addEventListener('click', function () {
+                        switchView('wo');
+                        switchTab('scan');
+                        if (NATIVE) { NATIVE.scan(); } else { startCamera('qr'); }
+                    });
+                    // 兜底：确保任何时候至少有一个面板可见
+                    function ensureVisiblePanel() {
+                        var visible = ['task', 'scan', 'new'].some(function (key) {
+                            var el = document.getElementById('panel-' + key);
+                            return el && el.style.display !== 'none';
+                        });
+                        if (!visible) { switchTab('scan'); }
+                    }
+                    // 不再依赖 HTML 默认值：打开即强制回到「工单 → 扫码建单」
+                    try { switchView('wo'); switchTab('scan'); } catch (e) { }
+                    ensureVisiblePanel();
+                    // 从后台恢复/后退缓存恢复时，再断言一次，避免空白
+                    window.addEventListener('pageshow', function (ev) {
+                        if (ev.persisted) {
+                            try { switchView('wo'); switchTab('scan'); } catch (e) { }
+                            ensureVisiblePanel(); loadOrders();
+                        }
+                    });
+                    document.addEventListener('visibilitychange', function () {
+                        if (!document.hidden) { ensureVisiblePanel(); }
+                    });
+
+                    // 错误代码/故障：输入即保存到本地，避免界面刷新或切换分栏后丢失
+                    ['err-code', 'new-qr-err', 'fault-desc', 'new-qr-fault'].forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (!el) { return; }
+                        el.addEventListener('input', function () {
+                            var saved = {};
+                            try { saved = JSON.parse(localStorage.getItem('mr_form_v1') || '{}'); } catch (e) { }
+                            if (id.indexOf('err') >= 0) { saved.err = el.value; } else { saved.fault = el.value; }
+                            localStorage.setItem('mr_form_v1', JSON.stringify(saved));
+                        });
+                    });
+                    // 照片灯箱：页内放大 + 关闭
+                    document.addEventListener('click', function (ev) {
+                        var el = ev.target;
+                        if (el && el.getAttribute && el.getAttribute('data-photo-view')) {
+                            document.getElementById('photo-viewer-img').src = el.getAttribute('data-photo-view');
+                            document.getElementById('photo-viewer').classList.add('show');
+                        }
+                        if (el && el.id === 'photo-viewer-close') {
+                            document.getElementById('photo-viewer').classList.remove('show');
+                        }
+                    });
+                    document.getElementById('btn-case-search').addEventListener('click', loadCases);
+                    document.getElementById('btn-timeline-refresh').addEventListener('click', loadTimeline);
+                    document.getElementById('btn-logout').addEventListener('click', function () {
+                        askConfirm('确认退出登录？', function () {
+                            window.location.href = '/web/session/logout?redirect=/web/login';
+                        });
+                    });
+
+                    function switchMsgTab(name) {
+                        document.querySelectorAll('[data-msg-tab]').forEach(function (b) {
+                            if (b.getAttribute('data-msg-tab') === name) { b.classList.add('active'); }
+                            else { b.classList.remove('active'); }
+                        });
+                        document.getElementById('msg-timeline').style.display =
+                            (name === 'timeline') ? 'block' : 'none';
+                        document.getElementById('msg-discuss').style.display =
+                            (name === 'discuss') ? 'block' : 'none';
+                        if (name === 'discuss') {
+                            var frame = document.getElementById('discuss-frame');
+                            if (frame && !frame.getAttribute('src')) {
+                                frame.setAttribute('src', '/odoo/discuss');
+                            }
+                        }
+                    }
+                    document.querySelectorAll('[data-msg-tab]').forEach(function (b) {
+                        b.addEventListener('click', function () {
+                            switchMsgTab(b.getAttribute('data-msg-tab'));
+                        });
+                    });
+
+                    function loadTimeline() {
+                        post('/timeline', {}).then(function (res) {
+                            var box = document.getElementById('timeline-list');
+                            if (!res.ok) { box.innerHTML = '<div class="empty">读取失败</div>'; return; }
+                            if (!res.events || !res.events.length) {
+                                box.innerHTML = '<div class="empty">暂无动态</div>'; return;
+                            }
+                            box.innerHTML = res.events.map(function (e) {
+                                var sys = e.kind === 'system';
+                                return '<div class="tl ' + (sys ? 'tl-sys' : 'tl-chat') + '">' +
+                                    '<div class="tl-head"><span class="tag ' + (sys ? 'info' : 'ok') + '">' +
+                                    esc(e.title) + '</span> <b>' + esc(e.order) + '</b> · ' +
+                                    stateTag(e.state) + ' · ' + esc(e.date) +
+                                    (e.author ? ' · ' + esc(e.author) : '') + '</div>' +
+                                    (e.body ? '<div class="tl-body">' + esc(e.body) + '</div>' : '') +
+                                    '</div>';
+                            }).join('');
+                        }).catch(function () {
+                            document.getElementById('timeline-list').innerHTML =
+                                '<div class="empty">当前离线，稍后再试</div>';
+                        });
+                    }
+                    function loadCases() {
+                        var q = document.getElementById('case-q').value.trim();
+                        post('/cases', {q: q}).then(function (res) {
+                            var box = document.getElementById('case-list');
+                            if (!res.ok) { box.innerHTML = '<div class="empty">读取失败</div>'; return; }
+                            box.innerHTML = (res.cases && res.cases.length)
+                                ? res.cases.map(function (c) {
+                                    return '<div class="order"><div class="info"><b>' + esc(c.machine_no) +
+                                        '</b> · ' + esc(c.date) + ' · ' + esc(c.technician) +
+                                        '<br/>故障：' + (esc(c.fault) || '-') +
+                                        '<br/>处理：' + (esc(c.solution) || '-') +
+                                        (c.parts ? '<br/>配件：' + esc(c.parts) : '') + '</div></div>';
+                                }).join('')
+                                : '<div class="empty">没有匹配的经验</div>';
+                        }).catch(function () {
+                            document.getElementById('case-list').innerHTML =
+                                '<div class="empty">当前离线，稍后再试</div>';
+                        });
+                    }
+
+                    // ---------------- 自绘确认框（避免 WebView 原生 confirm 显示网址） ----------------
+                    var confirmCallback = null;
+
+                    function askConfirm(message, onOk) {
+                        confirmCallback = onOk || null;
+                        document.getElementById('confirm-text').textContent = message;
+                        document.getElementById('confirm-mask').classList.add('show');
+                    }
+                    document.getElementById('confirm-ok').addEventListener('click', function () {
+                        var cb = confirmCallback;
+                        confirmCallback = null;
+                        document.getElementById('confirm-mask').classList.remove('show');
+                        if (cb) { cb(); }
+                    });
+                    document.getElementById('confirm-cancel').addEventListener('click', function () {
+                        confirmCallback = null;
+                        document.getElementById('confirm-mask').classList.remove('show');
+                    });
+
+                    // ---------------- 加载遮罩 ----------------
+                    function showLoading(text) {
+                        document.getElementById('loading-text').textContent = text || '正在处理…';
+                        document.getElementById('loading-mask').classList.add('show');
+                    }
+                    function hideLoading() {
+                        document.getElementById('loading-mask').classList.remove('show');
+                    }
+
+                    // ---------------- 工单详情 ----------------
+                    var detailOrder = null;
+                    var openingOrder = false;
+
+                    function openOrder(orderId) {
+                        if (openingOrder) { return; }        // 防重复点击
+                        openingOrder = true;
+                        showLoading('正在打开工单…');
+                        var done = false;
+                        var finish = function () {
+                            if (done) { return; }
+                            done = true;
+                            hideLoading();
+                            openingOrder = false;
+                        };
+                        // 看门狗：12 秒还没回来就解除，避免"永远转圈"
+                        var watchdog = setTimeout(function () { finish(); toast('打开超时，请检查网络后重试'); }, 12000);
+                        post('/order_detail', {order_id: orderId}).then(function (res) {
+                            clearTimeout(watchdog);
+                            finish();
+                            if (!res.ok) { toast(res.error || '读取失败'); return; }
+                            detailOrder = res.order;
+                            renderDetail(res.order);
+                            document.getElementById('order-detail').style.display = 'block';
+                            window.scrollTo(0, 0);
+                        }).catch(function () {
+                            clearTimeout(watchdog);
+                            finish();
+                            toast('网络不稳，打开失败，请重试');
+                        });
+                    }
+
+                    function renderDetail(o) {
+                        document.getElementById('d-title').textContent = o.name + ' · ' + o.state;
+                        var m = o.measure || {};
+                        var measureRow = function (key, label) {
+                            var done = !!m[key];
+                            return '<div class="measure-item"><span>' + label + '</span>' +
+                                (done
+                                    ? '<span class="tag ok">已完成</span>'
+                                    : '<button class="btn small" data-measure="' + key +
+                                      '" style="margin:0">完成</button>') + '</div>';
+                        };
+                        var videos = (o.videos || []).map(function (v) {
+                            return '<div style="margin-bottom:10px">' +
+                                '<video src="' + v.url + '" controls preload="metadata" playsinline="1" ' +
+                                'style="width:100%;max-height:200px;border-radius:10px;background:#000"></video>' +
+                                '<div class="video-item"><span>' + esc(v.name) + '（' + v.duration + ' 秒）</span>' +
+                                '<span>' +
+                                '<a class="btn small ghost" href="' + v.url + '" download="' + esc(v.name) +
+                                '" style="margin-right:6px">下载</a>' +
+                                '<button class="btn small ghost" data-sharevideo="' + v.id + '|' + v.url +
+                                '|' + esc(v.name) + '" style="margin:0 6px 0 0">分享</button>' +
+                                '<button class="btn small ghost" data-delvideo="' + v.id +
+                                '" style="margin:0">删除</button></span></div></div>';
+                        }).join('') || '<div class="empty">还没有视频（完工前必须上传至少 1 段）</div>';
+
+                        var html = '';
+                        html += kv('客户', o.partner) + kv('机台', o.machine) + kv('板件', o.product);
+                        html += kv('二维码', o.qr) + kv('紧急度', o.urgency) + kv('期限', o.deadline);
+                        html += kv('师傅', o.technician) + kv('错误代码', o.error_code);
+                        html += '<div class="hint" style="margin-top:10px">故障描述</div>' +
+                                '<textarea id="d-fault">' + esc(o.fault) + '</textarea>';
+                        html += '<div class="hint" style="margin-top:10px">故障分析判断</div>' +
+                                '<textarea id="d-analysis">' + esc(o.analysis) + '</textarea>';
+                        html += '<div class="hint" style="margin-top:10px">维修过程</div>' +
+                                '<textarea id="d-process">' + esc(o.process) + '</textarea>';
+                        html += '<button class="btn ghost" data-savework="1" style="margin-top:8px">保存以上内容</button>';
+
+                        var dPhotos = (o.photos || []).map(function (p) {
+                            var small = window.location.origin + p.url;
+                            return '<div style="margin:0 8px 8px 0;text-align:center">' +
+                                '<img src="' + small + '" data-photo-view="' + small +
+                                '" style="width:74px;height:74px;object-fit:cover;cursor:zoom-in;' +
+                                'border-radius:8px;border:1px solid #e6dff2"/>' +
+                                '<div style="font-size:11px"><a href="' + small + '" download="' + p.label +
+                                '.jpg">下载</a></div></div>';
+                        }).join('') || '<div class="empty">还没有照片</div>';
+                        html += '<div class="card" style="margin-top:12px"><h2>电路板照片</h2>' +
+                                '<div class="thumbs" style="display:flex;flex-wrap:wrap">' + dPhotos + '</div>' +
+                                '</div>';
+
+                        html += '<div class="card" style="margin-top:12px"><h2>电气参数测量</h2>' +
+                                measureRow('resistance', '电阻') + measureRow('voltage', '电压') +
+                                measureRow('inductance', '电感') + measureRow('capacitance', '电容') +
+                                (m.note ? '<div class="hint" style="margin-top:8px">' + esc(m.note) + '</div>' : '') +
+                                '</div>';
+
+                        html += '<div class="card"><h2>维修视频（最多 3 段，每段 ≤5 分钟）</h2>' +
+                                videos +
+                                '<button class="btn ghost" id="btn-video" style="margin-top:8px">拍摄/上传视频</button>' +
+                                '</div>';
+
+                        var req = o.requirements || {};
+                        var okFlag = function (done) {
+                            return done ? '<span class="tag ok">已满足</span>'
+                                        : '<span class="tag bad">未满足</span>';
+                        };
+                        html += '<div class="card" style="margin-top:12px"><h2>完工条件</h2>' +
+                            '<div class="measure-item"><span>正反面照片（正 ' + (req.front || 0) +
+                            ' / 反 ' + (req.back || 0) + '）</span>' + okFlag(req.photos_ok) + '</div>' +
+                            '<div class="measure-item"><span>维修视频（' + (req.videos || 0) +
+                            ' 段，至少 1 段）</span>' + okFlag(req.videos_ok) + '</div>' +
+                            '<div class="measure-item"><span>电气测量（' + (req.measures_done || 0) +
+                            ' / ' + (req.measures_total || 4) + '）</span>' +
+                            (req.measures_done ? '<span class="tag info">已完成 ' + req.measures_done + ' 项</span>'
+                                               : '<span class="tag warn">未开始</span>') + '</div>' +
+                            '</div>';
+
+                        var canComplete = o.can_complete;
+                        html += '<div class="hint" style="margin:6px 0">当前状态：' + esc(o.state) + '</div>';
+                        html += '<div class="row">' +
+                            (o.done
+                                ? '<button class="btn ok" style="flex:1;margin:0" disabled="disabled">已完工</button>'
+                                : canComplete
+                                    ? '<button class="btn ok" data-complete="' + o.id +
+                                      '" style="flex:1;margin:0">提交完工</button>'
+                                    : '<button class="btn" data-claim="' + o.id +
+                                      '" style="flex:1;margin:0">先抢单再完工</button>') +
+                            '</div>';
+                        if (!o.done && !req.videos_ok) {
+                            html += '<div class="hint" style="color:#c0392b;margin-top:6px">' +
+                                '还差维修视频：上传至少 1 段后才能提交完工。</div>';
+                        }
+                        document.getElementById('d-body').innerHTML = html;
+                    }
+
+                    document.getElementById('d-close').addEventListener('click', function () {
+                        document.getElementById('order-detail').style.display = 'none';
+                        detailOrder = null;
+                    });
+
+                    document.getElementById('order-detail').addEventListener('click', function (ev) {
+                        var el = ev.target, v;
+                        if (!el || !el.getAttribute) { return; }
+                        if ((v = el.getAttribute('data-measure'))) {
+                            var label = ({resistance: '电阻', voltage: '电压',
+                                          inductance: '电感', capacitance: '电容'})[v] || v;
+                            askConfirm('确认「' + label + '」已测量完成？', function () {
+                                post('/measure', {order_id: detailOrder.id, kind: v}).then(function (res) {
+                                    if (!res.ok) { toast(res.error || '保存失败'); return; }
+                                    toast(label + '：已完成');
+                                    // 本地更新，不再重新拉整个详情（省一次往返）
+                                    detailOrder.measure[v] = true;
+                                    renderDetail(detailOrder);
+                                });
+                            });
+                            return;
+                        }
+                        if (el.getAttribute('data-savework')) {
+                            post('/save_work', {
+                                order_id: detailOrder.id,
+                                fault: document.getElementById('d-fault').value,
+                                analysis: document.getElementById('d-analysis').value,
+                                process: document.getElementById('d-process').value,
+                                error_code: detailOrder.error_code
+                            }).then(function (res) {
+                                toast(res.ok ? '已保存' : (res.error || '保存失败'));
+                                if (res.ok) { openOrder(detailOrder.id); }
+                            });
+                            return;
+                        }
+                        if ((v = el.getAttribute('data-sharevideo'))) {
+                            var parts = v.split('|');
+                            var url = parts[1], name = parts[2] || 'video.mp4';
+                            if (navigator.share) {
+                                fetch(url).then(function (r) { return r.blob(); }).then(function (blob) {
+                                    var file = new File([blob], name, {type: blob.type || 'video/mp4'});
+                                    if (navigator.canShare && navigator.canShare({files: [file]})) {
+                                        return navigator.share({files: [file], title: name});
+                                    }
+                                    return navigator.share({title: name, url: window.location.origin + url});
+                                }).catch(function () { toast('分享被取消或不支持'); });
+                            } else {
+                                var abs = window.location.origin + url;
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                    navigator.clipboard.writeText(abs).then(function () {
+                                        toast('已复制视频链接，可粘贴发送');
+                                    }).catch(function () { toast('请长按视频选择保存'); });
+                                } else {
+                                    toast('这台手机不支持分享，可点下载后发送');
+                                }
+                            }
+                            return;
+                        }
+                        if ((v = el.getAttribute('data-delvideo'))) {
+                            askConfirm('确认删除这段视频？', function () {
+                                post('/delete_video', {video_id: v}).then(function (res) {
+                                    toast(res.ok ? '已删除' : (res.error || '删除失败'));
+                                    if (res.ok) {
+                                        detailOrder.videos = detailOrder.videos.filter(function (x) {
+                                            return String(x.id) !== String(v);
+                                        });
+                                        renderDetail(detailOrder);
+                                    }
+                                });
+                            });
+                            return;
+                        }
+                        if ((v = el.getAttribute('data-complete'))) {
+                            var reqV = (detailOrder && detailOrder.requirements) || {};
+                            if (!reqV.videos_ok) {
+                                toast('还没有上传维修视频，无法提交完工');
+                                return;
+                            }
+                            askConfirm('确认所有维修已完成并提交完工？', function () {
+                                showLoading('正在提交完工…');
+                                post('/complete', {order_id: v}).then(function (res) {
+                                    hideLoading();
+                                    if (!res.ok) { toast(res.error || '完工失败'); return; }
+                                    toast('已完工：' + res.order_name);
+                                    document.getElementById('order-detail').style.display = 'none';
+                                    loadOrders();
+                                }).catch(function () {
+                                    hideLoading();
+                                    toast('网络不稳，完工没提交成功');
+                                });
+                            });
+                            return;
+                        }
+                    });
+
+                    // 视频按钮是详情渲染时才生成的，必须用事件委托。
+                    // 之前这里直接 getElementById('btn-video') 会返回 null，
+                    // 抛出异常后把后续所有绑定都中断了（点视频没反应的真凶）。
+                    document.getElementById('order-detail').addEventListener('click', function (ev) {
+                        var el = ev.target;
+                        if (!el) { return; }
+                        if (el.id === 'btn-video' || (el.parentNode && el.parentNode.id === 'btn-video')) {
+                            document.getElementById('video-input').click();
+                        }
+                    });
+
+                    document.getElementById('video-input').addEventListener('change', function (ev) {
+                        var file = ev.target.files && ev.target.files[0];
+                        ev.target.value = '';
+                        if (!file || !detailOrder) { return; }
+                        var url = URL.createObjectURL(file);
+                        var probe = document.createElement('video');
+                        probe.preload = 'metadata';
+                        probe.onloadedmetadata = function () {
+                            var dur = Math.round(probe.duration || 0);
+                            URL.revokeObjectURL(url);
+                            if (!dur) { toast('读不到视频时长，请换一个格式'); return; }
+                            if (dur > 300) { toast('视频 ' + dur + ' 秒，超过 5 分钟，请重新拍摄'); return; }
+                            var fd = new FormData();
+                            fd.append('csrf_token', CSRF);
+                            fd.append('order_id', detailOrder.id);
+                            fd.append('duration', dur);
+                            fd.append('video', file, file.name || 'repair.mp4');
+                            toast('上传中…');
+                            fetch(BASE + '/upload_video', {method: 'POST', credentials: 'same-origin', body: fd})
+                                .then(function (r) { return r.json(); })
+                                .then(function (res) {
+                                    if (!res.ok) { toast(res.error || '上传失败'); return; }
+                                    toast('视频已上传（第 ' + res.count + ' 段）');
+                                    openOrder(detailOrder.id);
+                                }).catch(function () { toast('网络不稳，视频上传失败'); });
+                        };
+                        probe.onerror = function () { toast('这个视频格式读不出时长'); };
+                        probe.src = url;
+                    });
+
+                    // 兜底：任何初始化异常都不应阻止页面可用
+                    try {
+                        updateBadge();
+                        loadOrders();
+                        flushQueue();
+                    } catch (e) {
+                        if (window.console) { console.error(e); }
+                    }
+                })();
+//]]>
+                </script>
+            </body>
+        </html>
+    </template>
+</odoo>
