@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 维修服务费产品：过保维修按「另计单价」开这一行，不涉及库存。
+         注意：Odoo 20 没有 product.product_category_all 这个根类目了，
+         服务类产品用 product.product_category_services。 -->
+    <record id="product_repair_service_fee" model="product.product">
+        <field name="name">电路板维修费</field>
+        <field name="type">service</field>
+        <field name="categ_id" ref="product.product_category_services"/>
+        <field name="list_price">0.0</field>
+        <field name="description">过保电路板的维修服务费（按机台台账的另计单价计价）</field>
+    </record>
+</odoo>
