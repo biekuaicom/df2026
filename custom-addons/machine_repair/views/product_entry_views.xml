@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 配件专用的产品列表：一眼看到「追溯」和「可库存」这两个关键开关 -->
+    <record id="view_product_template_part_list" model="ir.ui.view">
+        <field name="name">product.template.machine_repair.parts</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <list string="配件">
+                <field name="name"/>
+                <field name="categ_id"/>
+                <field name="default_code" optional="show"/>
+                <field name="tracking" optional="show" widget="badge"
+                       decoration-danger="tracking == 'serial'"
+                       decoration-info="tracking == 'lot'"/>
+                <field name="is_storable" optional="show"/>
+                <field name="barcode" optional="hide"/>
+                <field name="uom_id" optional="hide"/>
+                <field name="list_price" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- 入口 1：通用电子元件（按数量管理，不需要 SN） -->
+    <record id="action_machine_repair_component_product" model="ir.actions.act_window">
+        <field name="name">通用电子元件</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_product_template_part_list"/>
+        <field name="domain" eval="[('categ_id', '=', ref('machine_repair.product_category_component'))]"/>
+        <field name="context" eval="{'default_categ_id': ref('machine_repair.product_category_component'),
+                                     'default_tracking': 'none',
+                                     'default_is_storable': True}"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">建立第一个通用电子元件</p>
+            <p>电阻、电容这类全机型通用的小件建在这里：按数量出入库，不需要 SN。
+               新记录已自动归到「通用电子元件」类目、追溯设为「无」。</p>
+        </field>
+    </record>
+
+    <!-- 入口 2：机型专属电路板（必须按 SN 管控） -->
+    <record id="action_machine_repair_board_product" model="ir.actions.act_window">
+        <field name="name">机型专属电路板</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_product_template_part_list"/>
+        <field name="domain" eval="[('categ_id', '=', ref('machine_repair.product_category_board'))]"/>
+        <field name="context" eval="{'default_categ_id': ref('machine_repair.product_category_board'),
+                                     'default_tracking': 'serial',
+                                     'default_is_storable': True}"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">建立第一块专属电路板</p>
+            <p>电路板必须绑定机型并强制带 SN：新记录已自动归到「专属电路板」类目、
+               追溯设为「按唯一序列号」、并设为可库存。
+               建好后再到「机型标准模板」里把它挂到具体机型下。</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_machine_repair_component" name="通用电子元件"
+              parent="menu_machine_repair_base"
+              action="action_machine_repair_component_product" sequence="30"/>
+    <menuitem id="menu_machine_repair_board" name="机型专属电路板"
+              parent="menu_machine_repair_base"
+              action="action_machine_repair_board_product" sequence="40"/>
+</odoo>
