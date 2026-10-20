@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 注意：prefix 故意留空 —— 编号前缀由 machine.board.qr._next_code() 统一加 "QR-"，
+         两处都加会变成 QR-QR-000001。 -->
+    <record id="seq_machine_board_qr" model="ir.sequence">
+        <field name="name">电路板二维码</field>
+        <field name="code">machine.board.qr</field>
+        <field name="prefix" eval="False"/>
+        <field name="padding">6</field>
+        <field name="company_id" eval="False"/>
+    </record>
+</odoo>
