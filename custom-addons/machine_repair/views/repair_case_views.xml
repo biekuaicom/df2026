@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ 故障分类（管理员维护的下拉菜单） ============ -->
+    <record id="view_repair_fault_category_list" model="ir.ui.view">
+        <field name="name">repair.fault.category.list</field>
+        <field name="model">repair.fault.category</field>
+        <field name="arch" type="xml">
+            <list string="故障分类" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="active"/>
+                <field name="note"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_repair_fault_category" model="ir.actions.act_window">
+        <field name="name">故障分类</field>
+        <field name="res_model">repair.fault.category</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- ============ 维修快照（只读历史凭证） ============ -->
+    <record id="view_repair_case_list" model="ir.ui.view">
+        <field name="name">repair.case.list</field>
+        <field name="model">repair.case</field>
+        <field name="arch" type="xml">
+            <list string="维修快照">
+                <field name="name"/>
+                <field name="completion_date"/>
+                <field name="machine_no"/>
+                <field name="partner_id"/>
+                <field name="machine_template_id"/>
+                <field name="fault_category_id"/>
+                <field name="technician_id"/>
+                <field name="repair_round" optional="hide"/>
+                <field name="experience_id" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_repair_case_form" model="ir.ui.view">
+        <field name="name">repair.case.form</field>
+        <field name="model">repair.case</field>
+        <field name="arch" type="xml">
+            <form string="维修快照" create="0" edit="0" delete="0">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="repair_order_id"/>
+                            <field name="machine_id"/>
+                            <field name="machine_no"/>
+                            <field name="machine_template_id"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group>
+                            <field name="completion_date"/>
+                            <field name="technician_id"/>
+                            <field name="urgency_level"/>
+                            <field name="repair_round"/>
+                            <field name="experience_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="故障与处理" name="fault">
+                            <group>
+                                <field name="fault_category_id"/>
+                                <field name="fault_description"/>
+                                <field name="solution"/>
+                            </group>
+                        </page>
+                        <page string="所用配件" name="parts">
+                            <field name="part_line_ids">
+                                <list>
+                                    <field name="product_id"/>
+                                    <field name="qty"/>
+                                    <field name="sn"/>
+                                    <field name="price_unit"/>
+                                </list>
+                            </field>
+                            <field name="part_summary"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_repair_case_search" model="ir.ui.view">
+        <field name="name">repair.case.search</field>
+        <field name="model">repair.case</field>
+        <field name="arch" type="xml">
+            <search string="维修快照">
+                <field name="machine_no"/>
+                <field name="partner_id"/>
+                <field name="machine_id"/>
+                <field name="fault_category_id"/>
+                <field name="technician_id"/>
+                <filter name="filter_no_experience" string="未归并经验"
+                        domain="[('experience_id', '=', False)]"/>
+                <separator/>
+                <filter name="group_by_machine" string="按机台" context="{'group_by': 'machine_id'}"/>
+                <filter name="group_by_category" string="按故障分类" context="{'group_by': 'fault_category_id'}"/>
+                <filter name="group_by_technician" string="按师傅" context="{'group_by': 'technician_id'}"/>
+                <filter name="group_by_month" string="按月份" context="{'group_by': 'completion_date:month'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_repair_case" model="ir.actions.act_window">
+        <field name="name">维修快照</field>
+        <field name="res_model">repair.case</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">还没有维修快照</p>
+            <p>工单完工时会自动生成快照，作为不可篡改的历史凭证。</p>
+        </field>
+    </record>
+
+    <!-- ============ 故障经验库（双轨制） ============ -->
+    <record id="view_repair_experience_list" model="ir.ui.view">
+        <field name="name">repair.experience.list</field>
+        <field name="model">repair.experience</field>
+        <field name="arch" type="xml">
+            <list string="故障经验库" decoration-success="priority >= 100">
+                <field name="priority" widget="handle"/>
+                <field name="name"/>
+                <field name="machine_template_id"/>
+                <field name="fault_category_id"/>
+                <field name="custom_fault_input" optional="show"/>
+                <field name="occurrence_count"/>
+                <field name="last_seen_date" optional="hide"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'published'"
+                       decoration-warning="state == 'draft'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_repair_experience_form" model="ir.ui.view">
+        <field name="name">repair.experience.form</field>
+        <field name="model">repair.experience</field>
+        <field name="arch" type="xml">
+            <form string="故障经验">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="如：喷水织机 / 电路板无输出"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="machine_template_id" options="{'no_create': True}"/>
+                            <field name="fault_category_id" options="{'no_create': True}"/>
+                            <field name="custom_fault_input" placeholder="下拉里没有的罕见故障，可自由填写"/>
+                        </group>
+                        <group>
+                            <field name="priority"/>
+                            <field name="state"/>
+                            <field name="occurrence_count"/>
+                            <field name="last_seen_date"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="经验总结" name="summary">
+                            <field name="summary_content" placeholder="现象、排查步骤、替换方案…"/>
+                        </page>
+                        <page string="高频器件 TOP" name="parts">
+                            <field name="top_parts"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_repair_experience_search" model="ir.ui.view">
+        <field name="name">repair.experience.search</field>
+        <field name="model">repair.experience</field>
+        <field name="arch" type="xml">
+            <search string="故障经验库">
+                <field name="name"/>
+                <field name="custom_fault_input"/>
+                <field name="fault_category_id"/>
+                <filter name="filter_published" string="已整理" domain="[('state', '=', 'published')]"/>
+                <filter name="filter_draft" string="待整理" domain="[('state', '=', 'draft')]"/>
+                <filter name="filter_pinned" string="置顶（优先级 100）" domain="[('priority', '>=', 100)]"/>
+                <separator/>
+                <filter name="group_by_category" string="按故障分类" context="{'group_by': 'fault_category_id'}"/>
+                <filter name="group_by_template" string="按机型" context="{'group_by': 'machine_template_id'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_repair_experience" model="ir.actions.act_window">
+        <field name="name">故障经验库</field>
+        <field name="res_model">repair.experience</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">经验库还是空的</p>
+            <p>每天会自动把新产生的维修快照按【机型 + 故障分类】聚合成经验条目；
+               你也可以在此手动新建，并把重要经验优先级设为 100 置顶。</p>
+        </field>
+    </record>
+
+    <!-- ============ 菜单 ============ -->
+    <menuitem id="menu_repair_case" name="维修快照" parent="menu_machine_repair_root"
+              action="action_repair_case" sequence="30"/>
+    <menuitem id="menu_repair_experience" name="故障经验库" parent="menu_machine_repair_root"
+              action="action_repair_experience" sequence="40"/>
+    <menuitem id="menu_machine_repair_config" name="配置" parent="menu_machine_repair_root" sequence="90"/>
+    <menuitem id="menu_repair_fault_category" name="故障分类" parent="menu_machine_repair_config"
+              action="action_repair_fault_category" sequence="10"/>
+</odoo>
