@@ -10,7 +10,6 @@ dist/
 *.log
 **/__pycache__/
 *.pyc
-.DS_Store
 _thumbs/
 
 # Android 构建产物与签名
@@ -20,7 +19,7 @@ mobile-android/keystore/
 mobile-android/app/libs/*.jar
 .gradle/
 
-# 本地配置 / 凭据 / 数据库备份
+# 本地配置 / 凭据
 odoo.conf
 .tools/db-credentials.txt
 *.jks
