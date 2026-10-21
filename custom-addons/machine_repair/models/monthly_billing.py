@@ -2,7 +2,7 @@ import calendar
 from datetime import date, timedelta
 
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 
 class MachineBillingLine(models.Model):
@@ -24,6 +24,31 @@ class MachineBillingLine(models.Model):
     amount = fields.Float('应收金额', digits=(12, 2))
     invoice_id = fields.Many2one('account.move', '发票', readonly=True)
     note = fields.Char('说明')
+
+    # 向导里有"该月已生成就报错"的粗粒度保护，但机台行是允许人工新增的：
+    # 同一台机台同一个月出现两行就会重复计费、重复开票，直接在库层面挡住。
+    _uniq_machine_month = models.Constraint(
+        'unique(machine_id, period_month)',
+        '同一台机台同一个月只能有一条计费明细（否则会重复计费）。',
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """先给一句人话，再让数据库约束兜底（并发/导入时靠它）。"""
+        for vals in vals_list:
+            machine_id = vals.get('machine_id')
+            month = vals.get('period_month')
+            if not machine_id or not month:
+                continue
+            duplicate = self.search([('machine_id', '=', machine_id),
+                                     ('period_month', '=', month)], limit=1)
+            if duplicate:
+                raise ValidationError(
+                    '机台「%s」在 %s 已经有一条计费明细（#%s），不能重复计费。\n'
+                    '要改金额请直接改那条明细，要重算请先删除它。'
+                    % (duplicate.machine_no or duplicate.machine_id.display_name,
+                       month, duplicate.id))
+        return super().create(vals_list)
 
 
 class MachineMonthlyBillingWizard(models.TransientModel):
