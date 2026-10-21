@@ -93,6 +93,27 @@ class MachineBoardQr(models.Model):
 
     _uniq_name = models.Constraint('unique(name)', '二维码编号不能重复。')
 
+    @api.constrains('sn')
+    def _check_sn_unique(self):
+        """原厂 SN / 条码不能重复建档。
+
+        扫码建档是按「编号」或「原厂 SN」反查记录的；同一个 SN 存成两块板之后，
+        反查一次命中两条，扫码会直接报“二维码重复、无法确定是哪一块”。
+        """
+        for board_qr in self:
+            sn = (board_qr.sn or '').strip()
+            if not sn:
+                continue
+            duplicate = self.search([
+                ('id', '!=', board_qr.id),
+                ('sn', '=', sn),
+            ], limit=1)
+            if duplicate:
+                raise ValidationError(
+                    '原厂 SN / 条码「%s」已经被 %s 使用，不能重复建档。\n'
+                    '同一块板请直接用 %s 继续维修。'
+                    % (sn, duplicate.name, duplicate.name))
+
     # ---------------------------------------------------------------- 生成
     @api.model_create_multi
     def create(self, vals_list):
