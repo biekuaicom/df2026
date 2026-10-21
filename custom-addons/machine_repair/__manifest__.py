@@ -1,6 +1,6 @@
 {
     'name': '机台维修管理（机型模板 / 工单 / 包月）',
-    'version': '20.0.1.1.0',
+    'version': '20.0.1.3.0',
     'summary': '机型标准模板与配件分类、客户机台台账、工单抢单接力、库存联动、经验库、包月账单',
     'description': """
 纺织机台维修业务管理
@@ -36,7 +36,9 @@
         'views/customer_machine_views.xml',
         'views/repair_order_views.xml',
         'views/repair_case_views.xml',
+        'views/test_delete_wizard_views.xml',
         'views/monthly_billing_views.xml',
+        'views/product_category_views.xml',
         'views/product_entry_views.xml',
         'views/board_qr_views.xml',
         'views/report_views.xml',
