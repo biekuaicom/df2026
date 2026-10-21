@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 
 class RepairFaultCategory(models.Model):
@@ -15,6 +15,22 @@ class RepairFaultCategory(models.Model):
     sequence = fields.Integer('排序', default=10)
     active = fields.Boolean('启用', default=True)
     note = fields.Text('说明')
+
+    @api.constrains('name')
+    def _check_name_unique(self):
+        """故障分类不能重名：下拉里出现两个「电源故障」时，统计口径就废了。"""
+        for category in self:
+            name = (category.name or '').strip()
+            if not name:
+                continue
+            duplicate = self.search([
+                ('id', '!=', category.id),
+                ('name', '=ilike', name),
+            ], limit=1)
+            if duplicate:
+                raise ValidationError(
+                    '故障分类「%s」已经存在（#%s），请直接使用已有分类。'
+                    % (name, duplicate.id))
 
 
 class RepairCase(models.Model):
