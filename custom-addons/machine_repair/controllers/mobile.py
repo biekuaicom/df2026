@@ -125,7 +125,9 @@ class MachineRepairMobile(http.Controller):
             'source': dict(board_qr._fields['source'].selection).get(board_qr.source, board_qr.source),
             'customer': board_qr.partner_id.display_name or '',
             'machine': board_qr.machine_no or '',
+            'machine_id': board_qr.machine_id.id or False,
             'product': board_qr.product_id.display_name or '',
+            'product_id': board_qr.product_id.id or False,
             'created_on': str(board_qr.created_on or ''),
             'monthly_start': str(board_qr.monthly_start_date or ''),
             'monthly_end': str(board_qr.monthly_end_date or ''),
@@ -208,15 +210,21 @@ class MachineRepairMobile(http.Controller):
         }
 
     def _order_payload(self, order):
+        # 机台以工单为准；工单上没填时退回二维码上的机台，避免列表/详情显示成空的
+        machine = order.machine_id or order.board_qr_id.machine_id
         return {
             'id': order.id,
             'name': order.name,
             'state': self.env['repair.order'].state_label(order.state),
+            'state_key': order.state,
+            'mine': order.technician_id.id == request.env.user.id,
+            'claimable': order.claimable,
             'urgency': dict(order._fields['urgency_level'].selection).get(
                 order.urgency_level, order.urgency_level),
-            'machine': order.machine_id.machine_no or '',
+            'machine': machine.machine_no or '',
             'partner': order.partner_id.display_name or '',
-            'deadline': str(order.deadline_datetime or ''),
+            'deadline': order.deadline_datetime.strftime('%Y-%m-%d %H:%M')
+                        if order.deadline_datetime else '',
             'overdue': order.is_overdue,
             'can_complete': order.state in ('confirmed', 'timeout_alert'),
             'invoiced': request.env['account.move'].search_count([
@@ -368,26 +376,57 @@ class MachineRepairMobile(http.Controller):
     @http.route('/machine_repair/mobile/my_orders', type='http', auth='user',
                 methods=['POST'], sitemap=False)
     def my_orders(self, **kwargs):
+        """工单分组（手机端分栏菜单用）。
+
+        「任务工单」分栏：待抢单（大厅）/ 维修中 / 超时接力 / 已完工 —— 看整个车间；
+        「我的工单」分栏：维修中 / 超时接力 / 已完工 —— 只看自己抢到的。
+        每组都带真实总数（counts），列表本身按组限量，避免一次拉太多。
+        """
         order_model = request.env['repair.order']
-        mine = order_model.search([
-            ('technician_id', '=', request.env.user.id),
-            ('state', 'in', ('confirmed', 'timeout_alert', 'pending_claim')),
-        ], order='deadline_datetime asc', limit=20)
-        # 刚完工的单子也列出来（能看到"已开票/待开票、照片张数"）
-        recent_done = order_model.search([
-            ('technician_id', '=', request.env.user.id),
-            ('state', 'in', ('done', 'secondary_completed')),
-        ], order='write_date desc', limit=5)
-        mine |= recent_done
-        pending = order_model.search([
-            ('state', '=', 'pending_claim'),
-            ('technician_id', '=', False),
-        ], order='urgency_sequence, deadline_datetime', limit=20)
+        user = request.env.user
+        DONE = ('done', 'secondary_completed')
+
+        def fetch(domain, order, limit):
+            return [self._order_payload(rec)
+                    for rec in order_model.search(domain, order=order, limit=limit)]
+
+        def count(domain):
+            return order_model.search_count(domain)
+
+        hall_pending = [('state', '=', 'pending_claim'), ('technician_id', '=', False)]
+        hall_repairing = [('state', '=', 'confirmed')]
+        hall_timeout = [('state', '=', 'timeout_alert')]
+        hall_done = [('state', 'in', DONE)]
+        mine_repairing = [('technician_id', '=', user.id), ('state', '=', 'confirmed')]
+        mine_timeout = [('technician_id', '=', user.id), ('state', '=', 'timeout_alert')]
+        mine_done = [('technician_id', '=', user.id), ('state', 'in', DONE)]
+
+        groups = {
+            'pending': fetch(hall_pending, 'urgency_sequence, deadline_datetime', 50),
+            'repairing': fetch(hall_repairing, 'deadline_datetime', 50),
+            'timeout': fetch(hall_timeout, 'deadline_datetime', 50),
+            'done': fetch(hall_done, 'write_date desc', 30),
+            'mine_repairing': fetch(mine_repairing, 'deadline_datetime', 30),
+            'mine_timeout': fetch(mine_timeout, 'deadline_datetime', 30),
+            'mine_done': fetch(mine_done, 'write_date desc', 20),
+        }
+        counts = {
+            'pending': count(hall_pending),
+            'repairing': count(hall_repairing),
+            'timeout': count(hall_timeout),
+            'done': count(hall_done),
+            'mine_repairing': count(mine_repairing),
+            'mine_timeout': count(mine_timeout),
+            'mine_done': count(mine_done),
+        }
         return self._json({
             'ok': True,
             'can_invoice': self._can_invoice(),
-            'mine': [self._order_payload(order) for order in mine],
-            'pending': [self._order_payload(order) for order in pending],
+            'groups': groups,
+            'counts': counts,
+            # 兼容旧版页面（新版按 groups 渲染）
+            'mine': groups['mine_repairing'] + groups['mine_timeout'] + groups['mine_done'],
+            'pending': groups['pending'],
         })
 
     @http.route('/machine_repair/mobile/claim', type='http', auth='user',
@@ -521,6 +560,11 @@ class MachineRepairMobile(http.Controller):
         if not order:
             return self._json({'ok': False, 'error': '工单不存在'})
         Order = request.env['repair.order']
+        board_qr = order.board_qr_id
+        # 工单上缺机台/板件时退回二维码上的档案（老单据常见），并告诉前端“是缺的”，
+        # 让详情页可以直接补填，而不是只显示一个 '-'。
+        machine = order.machine_id or board_qr.machine_id
+        product = order.product_id or board_qr.product_id
         return self._json({'ok': True, 'order': {
             'id': order.id,
             'name': order.name,
@@ -528,8 +572,16 @@ class MachineRepairMobile(http.Controller):
             'urgency': dict(order._fields['urgency_level'].selection).get(
                 order.urgency_level, order.urgency_level or ''),
             'partner': order.partner_id.display_name or '',
-            'machine': order.machine_id.machine_no or '',
-            'product': order.product_id.display_name or '',
+            'partner_id': order.partner_id.id or False,
+            'machine': machine.machine_no or '',
+            'machine_id': machine.id or False,
+            'machine_from_qr': bool(machine) and not order.machine_id,
+            'machine_missing': not machine,
+            'product': product.display_name or '',
+            'product_id': product.id or False,
+            'product_from_qr': bool(product) and not order.product_id,
+            'product_missing': not product,
+            'board_product': (board_qr.product_id.display_name or '') if board_qr else '',
             'qr': order.board_qr_id.name or '',
             'technician': order.technician_id.name or '',
             'deadline': order.deadline_datetime.strftime('%Y-%m-%d %H:%M')
@@ -600,15 +652,52 @@ class MachineRepairMobile(http.Controller):
     @http.route('/machine_repair/mobile/save_work', type='http', auth='user',
                 methods=['POST'], sitemap=False)
     def save_work(self, **kwargs):
+        """保存详情页内容。**只写前端真正传上来的字段**。
+
+        以前这里无条件写 analysis_note / repair_process / error_code / fault_description，
+        建单后那次“补写错误代码”的小请求就会把已经填好的故障分析、维修过程清成空字符串。
+        """
         order = self._order(kwargs.get('order_id'))
         if not order:
             return self._json({'ok': False, 'error': '工单不存在'})
-        order.write({
-            'analysis_note': (kwargs.get('analysis') or '')[:4000],
-            'repair_process': (kwargs.get('process') or '')[:4000],
-            'error_code': (kwargs.get('error_code') or '')[:120],
-            'fault_description': (kwargs.get('fault') or '')[:4000],
-        })
+        vals = {}
+        for key, field, limit in (
+            ('error_code', 'error_code', 120),
+            ('fault', 'fault_description', 4000),
+            ('analysis', 'analysis_note', 4000),
+            ('process', 'repair_process', 4000),
+        ):
+            if key in kwargs:
+                vals[field] = (kwargs.get(key) or '')[:limit]
+
+        # 机台 / 板件型号：扫码时没带出来的，允许在详情页补填
+        def _as_int(value):
+            try:
+                return int(value or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        machine = product = None
+        if kwargs.get('machine_id'):
+            machine = request.env['customer.machine'].browse(
+                _as_int(kwargs.get('machine_id'))).exists()
+            if machine:
+                vals['machine_id'] = machine.id
+        if kwargs.get('product_id'):
+            product = request.env['product.product'].browse(
+                _as_int(kwargs.get('product_id'))).exists()
+            if product:
+                vals['product_id'] = product.id
+        if vals:
+            order.write(vals)
+        # 二维码上缺的机台/板件顺手补上，保证下次扫码就能看到
+        fix = {}
+        if machine and not order.board_qr_id.machine_id:
+            fix['machine_id'] = machine.id
+        if product and not order.board_qr_id.product_id:
+            fix['product_id'] = product.id
+        if fix and order.board_qr_id:
+            order.board_qr_id.write(fix)
         return self._json({'ok': True})
 
     @http.route('/machine_repair/mobile/upload_video', type='http', auth='user',
