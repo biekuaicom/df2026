@@ -62,6 +62,15 @@ class RepairOrder(models.Model):
     modify_count_date = fields.Date('修改计数日期', readonly=True, copy=False)
 
     is_overdue = fields.Boolean('已超期', compute='_compute_claim_state')
+    # 核心 repair.order.state 的中文翻译在库里缺失（界面会显示 Done / Cancel），
+    # 列表里统一用这个字段显示中文状态；badge 配色仍按 state 计算。
+    state_display = fields.Char('状态', compute='_compute_state_display')
+
+    @api.depends('state')
+    def _compute_state_display(self):
+        for order in self:
+            order.state_display = order.state_label(order.state)
+
     deadline_state = fields.Selection(
         [('ok', '正常'), ('overdue', '超期')],
         string='期限状态', compute='_compute_claim_state',
@@ -438,6 +447,28 @@ class RepairOrder(models.Model):
         if 'machine_id' in vals and not self.env.context.get('machine_repair_skip_extra_parts'):
             self.with_context(machine_repair_skip_extra_parts=True)._apply_extra_charges()
         return result
+
+    def action_open_test_delete(self):
+        """管理员：打开「作废并删除测试单」的二次确认向导。
+
+        Odoo 核心不允许删除已完工维修单（`_unlink_except_confirmed`），
+        但测试期造出来的单子必须能清掉，所以走这个带备份的向导。
+        """
+        if not self.env.user.has_group('base.group_system'):
+            raise UserError('只有管理员可以删除工单。')
+        if not self:
+            raise UserError('请先选择要删除的工单。')
+        wizard = self.env['machine.repair.test.delete'].create({
+            'order_ids': [(6, 0, self.ids)],
+        })
+        return {
+            'type': 'ir.actions.act_window',
+            'name': '作废并删除测试单',
+            'res_model': 'machine.repair.test.delete',
+            'res_id': wizard.id,
+            'view_mode': 'form',
+            'target': 'new',
+        }
 
     def action_reset_modify_count(self):
         """管理员解锁：把当天修改次数清零。"""
