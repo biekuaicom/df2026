@@ -59,6 +59,9 @@
                         class="btn-secondary" invisible="board_qr_id or not partner_id"/>
                 <button name="action_load_extra_parts" type="object" string="带出另计维修"
                         class="btn-secondary" invisible="not machine_id"/>
+                <!-- 管理员专用：测试单作废并删除（Odoo 核心禁止删除已完工维修单，这里走二次确认向导） -->
+                <button name="action_open_test_delete" type="object" string="作废并删除测试单"
+                        groups="base.group_system" class="btn-danger"/>
             </xpath>
             <xpath expr="//header/field[@name='state']" position="attributes">
                 <attribute name="statusbar_visible">draft,pending_claim,confirmed,timeout_alert,done,secondary_completed</attribute>
@@ -95,6 +98,23 @@
                         <field name="previous_repair_count" invisible="not machine_id"/>
                         <field name="repair_round" invisible="not machine_id"/>
                         <field name="modify_count" invisible="not modify_count"/>
+                    </group>
+                </group>
+                <!-- 手机端录入的故障信息：以前表单里根本没有这些字段，
+                     在后台打开工单就看不到「错误代码 / 故障描述 / 分析 / 过程」，
+                     容易被当成“保存后信息丢了”。 -->
+                <group string="故障信息（手机端录入）">
+                    <group>
+                        <field name="error_code"/>
+                        <field name="fault_category_id"/>
+                        <field name="fault_description" placeholder="故障描述（手机端「故障描述」）"/>
+                        <field name="solution" placeholder="处理方式"/>
+                    </group>
+                    <group>
+                        <field name="analysis_note" placeholder="故障分析判断"/>
+                        <field name="repair_process" placeholder="维修过程"/>
+                        <field name="measure_note" placeholder="电气测量记录"/>
+                        <field name="video_count"/>
                     </group>
                 </group>
             </xpath>
@@ -146,16 +166,118 @@
         </field>
     </record>
 
-    <!-- ============ 工单大厅入口 ============ -->
+    <!-- ============ 工单大厅 ============
+         分栏菜单：全部 / 待抢单 / 维修中 / 超时接力 / 已完工 / 已开票。
+         每个分栏是一个独立 action（各自带 domain），按钮挂在下面的大厅列表视图上。
+         注意加载顺序：列表视图 -> action（引用 view_id）-> 再给列表加 header 按钮
+         （按钮里引用 action 的 xmlid，所以必须排在 action 之后，否则 xmlid 还不存在）。 -->
+    <record id="view_repair_hall_list" model="ir.ui.view">
+        <field name="name">repair.order.hall.list</field>
+        <field name="model">repair.order</field>
+        <field name="arch" type="xml">
+            <list string="工单大厅"
+                  decoration-danger="urgency_level == 'emergency' or state == 'timeout_alert'"
+                  decoration-warning="urgency_level == 'urgent' or state == 'pending_claim'"
+                  default_order="urgency_sequence, deadline_datetime">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="machine_id"/>
+                <field name="board_qr_id" optional="hide"/>
+                <field name="urgency_level" widget="badge" optional="show"
+                       decoration-danger="urgency_level == 'emergency'"
+                       decoration-warning="urgency_level == 'urgent'"/>
+                <field name="deadline_datetime" optional="show"/>
+                <field name="technician_id" optional="show"/>
+                <field name="invoice_ids" optional="hide"/>
+                <field name="state" column_invisible="True"/>
+                <field name="state_display" widget="badge" optional="show"
+                       decoration-success="state in ('done', 'secondary_completed')"
+                       decoration-info="state == 'confirmed'"
+                       decoration-warning="state in ('pending_claim', 'timeout_alert')"
+                       decoration-muted="state == 'cancel'"/>
+            </list>
+        </field>
+    </record>
+
     <record id="action_repair_hall" model="ir.actions.act_window">
-        <field name="name">工单大厅</field>
+        <field name="name">工单大厅 · 全部</field>
         <field name="res_model">repair.order</field>
-        <field name="view_mode">kanban,list,form</field>
-        <field name="domain">[('state', 'in', ['draft', 'pending_claim', 'confirmed', 'timeout_alert'])]</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_repair_hall_list"/>
+        <field name="domain">[]</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">工单大厅</p>
             <p>新建维修单后点「发布到大厅」，师傅在这里抢单；
-               超期未完成的工单会被每小时巡检自动转为「超时接力」并高亮。</p>
+               超期未完成的工单会被每小时巡检自动转为「超时接力」并高亮。
+               上面的分栏可以只看某一类工单。</p>
+        </field>
+    </record>
+
+    <record id="action_repair_hall_pending" model="ir.actions.act_window">
+        <field name="name">工单大厅 · 待抢单</field>
+        <field name="res_model">repair.order</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_repair_hall_list"/>
+        <field name="domain">[('state', '=', 'pending_claim')]</field>
+    </record>
+
+    <record id="action_repair_hall_repairing" model="ir.actions.act_window">
+        <field name="name">工单大厅 · 维修中</field>
+        <field name="res_model">repair.order</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_repair_hall_list"/>
+        <field name="domain">[('state', '=', 'confirmed')]</field>
+    </record>
+
+    <record id="action_repair_hall_timeout" model="ir.actions.act_window">
+        <field name="name">工单大厅 · 超时接力</field>
+        <field name="res_model">repair.order</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_repair_hall_list"/>
+        <field name="domain">[('state', '=', 'timeout_alert')]</field>
+    </record>
+
+    <record id="action_repair_hall_done" model="ir.actions.act_window">
+        <field name="name">工单大厅 · 已完工</field>
+        <field name="res_model">repair.order</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_repair_hall_list"/>
+        <field name="domain">[('state', 'in', ['done', 'secondary_completed'])]</field>
+        <field name="context">{'default_order': 'write_date desc'}</field>
+    </record>
+
+    <record id="action_repair_hall_invoiced" model="ir.actions.act_window">
+        <field name="name">工单大厅 · 已开票</field>
+        <field name="res_model">repair.order</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_repair_hall_list"/>
+        <field name="domain">[('invoice_ids', '!=', False)]</field>
+    </record>
+
+    <!-- 大厅列表上的分栏菜单按钮（extension：凡是用到这个列表视图都会出现） -->
+    <record id="view_repair_hall_list_menu" model="ir.ui.view">
+        <field name="name">repair.order.hall.list.menu</field>
+        <field name="model">repair.order</field>
+        <field name="inherit_id" ref="view_repair_hall_list"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list" position="inside">
+                <header>
+                    <button name="%(action_repair_hall)d" type="action" string="全部"
+                            display="always" class="btn-secondary"/>
+                    <button name="%(action_repair_hall_pending)d" type="action" string="待抢单"
+                            display="always" class="btn-secondary"/>
+                    <button name="%(action_repair_hall_repairing)d" type="action" string="维修中"
+                            display="always" class="btn-secondary"/>
+                    <button name="%(action_repair_hall_timeout)d" type="action" string="超时接力"
+                            display="always" class="btn-secondary"/>
+                    <button name="%(action_repair_hall_done)d" type="action" string="已完工"
+                            display="always" class="btn-secondary"/>
+                    <button name="%(action_repair_hall_invoiced)d" type="action" string="已开票"
+                            display="always" class="btn-secondary"/>
+                    <button name="action_open_test_delete" type="object" string="作废并删除测试单"
+                            display="always" groups="base.group_system" class="btn-danger"/>
+                </header>
+            </xpath>
         </field>
     </record>
 
