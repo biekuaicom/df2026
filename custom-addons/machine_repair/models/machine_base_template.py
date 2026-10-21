@@ -1,4 +1,5 @@
 from odoo import api, fields, models
+from odoo.exceptions import ValidationError
 
 
 class MachineBaseTemplate(models.Model):
@@ -25,6 +26,23 @@ class MachineBaseTemplate(models.Model):
     def _compute_line_count(self):
         for template in self:
             template.line_count = len(template.line_ids)
+
+    @api.constrains('name')
+    def _check_name_unique(self):
+        """机型名称不允许重名：两个「GTMAX-2.0」会让建机台时选错基线。"""
+        for template in self:
+            name = (template.name or '').strip()
+            if not name:
+                continue
+            duplicate = self.search([
+                ('id', '!=', template.id),
+                ('name', '=ilike', name),
+            ], limit=1)
+            if duplicate:
+                raise ValidationError(
+                    '机型名称「%s」已经存在（#%s）。\n'
+                    '请直接在已有模板上增删电路板，不要重复建机型。'
+                    % (name, duplicate.id))
 
 
 class MachineBaseTemplateLine(models.Model):
