@@ -36,7 +36,8 @@
                     .btn:disabled { background: #b9aed6; }
                     .btn.ghost { background: #ece8f5; color: #5B3A8F; }
                     .btn.ok { background: #1e7b45; }
-                    .btn.danger { background: #c0392b; }`n                    .btn.sel { background: #5B3A8F; color: #fff; }
+                    .btn.danger { background: #c0392b; }
+                    .btn.sel { background: #5B3A8F; color: #fff; }
                     .btn.small { padding: 9px 12px; font-size: 13px; margin: 0; width: auto; display: inline-block; }
                     .row { display: flex; gap: 8px; flex-wrap: wrap; }
                     #video { width: 100%; height: auto; border-radius: 0; background: #000; }
@@ -68,9 +69,13 @@
                     .photo-row .btn { margin-bottom: 0; }
                     .history-item { font-size: 12px; color: #5d5669; padding: 4px 0;
                                     border-bottom: 1px dashed #f0edf5; }
+                    /* 提示必须盖在所有浮层之上：详情页 .detail-sheet 是 60、遮罩是 80。
+                       以前 #toast 是 50，详情页一打开，所有提示都被盖住 ——
+                       点「分享」失败时用户看到的就是“完全没反应”。 */
                     #toast { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
                              background: rgba(30,20,50,.94); color: #fff; padding: 12px 18px;
-                             border-radius: 12px; font-size: 14px; max-width: 88vw; display: none; z-index: 50; }
+                             border-radius: 12px; font-size: 14px; max-width: 88vw; display: none;
+                             z-index: 300; }
                     #toast.show { display: block; }
                     .empty { color: #9a93a8; font-size: 13px; padding: 6px 0; }
                     .legend { font-size: 12px; color: #6b6478; line-height: 1.9; }
@@ -166,6 +171,10 @@
                            font-size: 15px; font-weight: 600; background: #ece8f5; color: #5B3A8F;
                            border: 0; }
                     .tab.active { background: #5B3A8F; color: #fff; }
+                    /* 二级分栏（任务工单 / 我的工单）：更紧凑，带数量 */
+                    .tabs.subtabs { gap: 6px; margin-bottom: 10px; }
+                    .tabs.subtabs .tab { padding: 9px 4px; font-size: 13px; border-radius: 10px; }
+                    .tabs.subtabs .tab b { font-weight: 700; opacity: .85; }
                     .scan-box { position: relative; border-radius: 12px; overflow: hidden;
                                 background: #000; margin-bottom: 10px; }
                     .scan-box video { display: block; width: 100%; border-radius: 0; }
@@ -281,10 +290,11 @@
                     </div>
 
                     <div id="panel-task" style="display:none">
-<div class="card">
-                        <h2>待抢单</h2>
-                        <div id="pending"></div>
-                    </div>
+                        <!-- 分栏菜单：待抢单 / 维修中 / 超时接力 / 已完工 -->
+                        <div class="tabs subtabs" id="task-tabs"></div>
+                        <div class="card">
+                            <div id="task-list"></div>
+                        </div>
 
                     <div class="card">
                         <h2>状态说明</h2>
@@ -334,14 +344,16 @@
                     <div id="view-me" style="display:none">
                         <div class="card">
                             <h2>我的工单</h2>
-                            <div class="hint">我创建或抢到的工单</div>
-                            <button class="btn ghost" id="btn-refresh">刷新</button>
-                            <div id="mine"></div>
+                            <div class="hint">我抢到 / 我完工的工单</div>
+                            <!-- 分栏菜单：维修中 / 超时接力 / 已完工 -->
+                            <div class="tabs subtabs" id="mine-tabs" style="margin-top:8px"></div>
+                            <button class="btn ghost" id="btn-refresh" style="margin-top:8px">刷新</button>
+                            <div id="mine-list"></div>
                         </div>
                         <div class="card">
                             <h2>账号</h2>
                             <div class="kv"><span>当前用户</span><b><t t-out="user_name"/></b></div>
-                            <div class="kv"><span>页面版本</span><b>v31</b></div>
+                            <div class="kv"><span>页面版本</span><b>v33</b></div>
                             <button class="btn ghost" id="btn-logout" style="margin-top:10px">退出登录</button>
                         </div>
                     </div>
@@ -376,6 +388,7 @@
                         <b id="d-title">工单详情</b>
                         <button class="btn small ghost" id="d-close" style="margin:0">关闭</button>
                     </div>
+                    <div id="d-hint" class="hint" style="min-height:18px;color:#1e7b45;margin-bottom:4px"></div>
                     <div id="d-body"></div>
                 </div>
                 <input type="file" id="video-input" accept="video/*" capture="environment" style="display:none"/>
@@ -452,12 +465,21 @@
                         var t = document.getElementById('toast');
                         t.textContent = msg; t.className = 'show';
                         clearTimeout(window.__tt);
-                        window.__tt = setTimeout(function () { t.className = ''; }, ms || 2400);
+                        window.__tt = setTimeout(function () { t.className = ''; }, ms || 3000);
+                        // 详情页里也顺手写一份状态，免得提示被键盘/浮层挡住看不到
+                        var hint = document.getElementById('d-hint');
+                        if (hint && document.getElementById('order-detail').style.display === 'block') {
+                            hint.textContent = msg;
+                        }
                     }
+                    // 同时用于文本内容和 HTML 属性：引号也必须转义，
+                    // 否则视频文件名里带 " 会把 data-xxx 属性截断（点击就没反应）。
                     function esc(s) {
                         return String(s === undefined || s === null ? '' : s)
-                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                     }
+                    var escAttr = esc;
                     function post(path, data, isForm) {
                         var body;
                         if (isForm) { body = data; }
@@ -717,6 +739,13 @@
                                 '<span class="tag ' + (q.in_warranty ? 'ok' : 'bad') + '">' +
                                 esc(q.warranty_state) + '</span> ' + esc(q.warranty_end || '') + '</b></div>';
                         html += kv('已维修次数', q.repair_count);
+                        if (!q.machine || !q.product) {
+                            html += '<div class="hint" style="color:#c0392b;margin-top:6px">' +
+                                '这张码还没有' + (!q.machine ? '机台' : '') +
+                                (!q.machine && !q.product ? ' / ' : '') +
+                                (!q.product ? '板件型号' : '') +
+                                '档案：先照常建单，建好后在「详情 → 补填机台 / 板件」里补上即可。</div>';
+                        }
                         document.getElementById('qr-kv').innerHTML = html;
 
                         var photos = q.photos || {front: 0, back: 0, detail: 0};
@@ -846,8 +875,16 @@
                             .then(function (r) { return r.json(); });
                     }
 
-                    // ---------------- 工单 ----------------
-                    function orderRow(o, withClaim) {
+                    // ---------------- 工单（分栏菜单） ----------------
+                    var ordersData = {groups: {}, counts: {}};
+                    var taskTab = 'pending';
+                    var mineTab = 'repairing';
+                    var TASK_TABS = [['pending', '待抢单'], ['repairing', '维修中'],
+                                     ['timeout', '超时接力'], ['done', '已完工']];
+                    var MINE_TABS = [['repairing', '维修中'], ['timeout', '超时接力'],
+                                     ['done', '已完工']];
+
+                    function orderRow(o) {
                         var html = '<div class="order" data-detail="' + o.id + '"><div class="info"><b>' + esc(o.name) + '</b> ' +
                             stateTag(o.state) + '<br/>' +
                             esc(o.urgency) + ' · ' + esc(o.machine || '-') +
@@ -858,30 +895,75 @@
                             (o.has_photos ? '' : ' <span class="tag warn">缺正反面照片</span>') +
                             '</div><div class="row">' +
                             '<button class="btn small ghost" data-detail="' + o.id + '">详情</button>';
-                        if (withClaim) {
+                        // 抢单只对「大厅里没人接」的单子有意义；完工/开票只对自己抢到的单子出现
+                        if (o.claimable) {
                             html += '<button class="btn small" data-claim="' + o.id + '">抢单</button>';
-                        } else {
-                            if (o.can_complete) {
-                                html += '<button class="btn small ok" data-complete="' + o.id + '">完工</button>';
-                            }
-                            if (window.__canInvoice && !o.invoiced &&
-                                (o.state === '已完工' || o.state === '接力完工')) {
-                                html += '<button class="btn small" data-invoice="' + o.id + '">开票</button>';
-                            }
+                        }
+                        if (o.mine && o.can_complete) {
+                            html += '<button class="btn small ok" data-complete="' + o.id + '">完工</button>';
+                        }
+                        if (o.mine && window.__canInvoice && !o.invoiced &&
+                            (o.state_key === 'done' || o.state_key === 'secondary_completed')) {
+                            html += '<button class="btn small" data-invoice="' + o.id + '">开票</button>';
                         }
                         html += '</div></div>';
                         return html;
                     }
+
+                    function renderTabs(barId, tabs, activeKey, scope) {
+                        var bar = document.getElementById(barId);
+                        if (!bar) { return; }
+                        bar.innerHTML = tabs.map(function (tab) {
+                            var key = tab[0];
+                            var countKey = (scope === 'mine') ? ('mine_' + key) : key;
+                            var n = (ordersData.counts || {})[countKey] || 0;
+                            return '<button class="tab' + (key === activeKey ? ' active' : '') +
+                                '" data-' + scope + '-tab="' + key + '">' + tab[1] +
+                                (n ? ' <b>' + n + '</b>' : '') + '</button>';
+                        }).join('');
+                    }
+
+                    function renderOrderList(boxId, bucket, emptyText) {
+                        var box = document.getElementById(boxId);
+                        if (!box) { return; }
+                        var list = (ordersData.groups || {})[bucket] || [];
+                        box.innerHTML = list.length
+                            ? list.map(orderRow).join('')
+                            : '<div class="empty">' + emptyText + '</div>';
+                    }
+
+                    function renderTask() {
+                        renderTabs('task-tabs', TASK_TABS, taskTab, 'task');
+                        renderOrderList('task-list', taskTab,
+                            taskTab === 'pending' ? '大厅里暂时没有待抢的工单'
+                                                   : '这个分栏里暂时没有工单');
+                    }
+
+                    function renderMine() {
+                        renderTabs('mine-tabs', MINE_TABS, mineTab, 'mine');
+                        renderOrderList('mine-list', 'mine_' + mineTab, '这个分栏里暂时没有工单');
+                    }
+
+                    function onOrderTabClick(ev) {
+                        var el = ev.target;
+                        while (el && el !== this) {
+                            if (el.getAttribute) {
+                                var t = el.getAttribute('data-task-tab');
+                                if (t) { taskTab = t; renderTask(); return; }
+                                t = el.getAttribute('data-mine-tab');
+                                if (t) { mineTab = t; renderMine(); return; }
+                            }
+                            el = el.parentNode;
+                        }
+                    }
+
                     function loadOrders() {
                         post('/my_orders', {}).then(function (res) {
                             if (!res.ok) { toast(res.error || '读不到工单'); return; }
                             window.__canInvoice = !!res.can_invoice;
-                            document.getElementById('mine').innerHTML = res.mine.length
-                                ? res.mine.map(function (o) { return orderRow(o, false); }).join('')
-                                : '<div class="empty">暂无进行中的工单</div>';
-                            document.getElementById('pending').innerHTML = res.pending.length
-                                ? res.pending.map(function (o) { return orderRow(o, true); }).join('')
-                                : '<div class="empty">没有待抢的工单</div>';
+                            ordersData = {groups: res.groups || {}, counts: res.counts || {}};
+                            renderTask();
+                            renderMine();
                             updateBadge();
                         }).catch(function () { toast('当前离线'); updateBadge(); });
                     }
@@ -926,16 +1008,31 @@
                             renderQr(res.qr);
                         });
                     }
+                    var createInFlight = false;
+                    function setConfirmBusy(busy) {
+                        var btn = document.getElementById('btn-confirm-order');
+                        if (!btn) { return; }
+                        btn.disabled = busy;
+                        btn.textContent = busy ? '建单中…' : '确定建单';
+                    }
                     function createOrder(urgency) {
+                        // 防连点：以前没有这道锁，车间里手快点两下会真的开出两张单
+                        // （日志里 11:51:10 / 11:51:11 两条 create_order）。
+                        if (createInFlight) { toast('正在建单，请稍候…'); return; }
                         if (!lastCode) { toast('先扫码或生成二维码'); return; }
+                        createInFlight = true;
+                        setConfirmBusy(true);
+                        var done = function () { createInFlight = false; setConfirmBusy(false); };
                         var payload = {code: lastCode, urgency: urgency};
                         if (pickedPartner) { payload.partner_id = pickedPartner; }
                         if (currentQr && currentQr.id) { payload.qr_id = currentQr.id; }
-                        // 机台/板件型号：取生码建单页当前选择（即使码是更早生成的）
+                        // 机台/板件型号：扫到的板件档案优先，其次用生码建单页当前选择
+                        if (currentQr && currentQr.machine_id) { payload.machine_id = currentQr.machine_id; }
+                        if (currentQr && currentQr.product_id) { payload.product_id = currentQr.product_id; }
                         var mSel = document.getElementById('newqr-machine');
                         var pSel = document.getElementById('newqr-product');
-                        if (mSel && mSel.value) { payload.machine_id = mSel.value; }
-                        if (pSel && pSel.value) { payload.product_id = pSel.value; }
+                        if (!payload.machine_id && mSel && mSel.value) { payload.machine_id = mSel.value; }
+                        if (!payload.product_id && pSel && pSel.value) { payload.product_id = pSel.value; }
                         // 两个分栏都有输入框，哪个有值用哪个（之前只读扫码页，导致生码建单填的不保存）
                         var pick = function (a, b) {
                             var ea = document.getElementById(a), eb = document.getElementById(b);
@@ -950,6 +1047,7 @@
                         if (errVal) { payload.error_code = errVal; }
                         if (faultVal) { payload.fault = faultVal; }
                         queued('/create_order', payload, '开单').then(function (res) {
+                            done();
                             if (res.queued) { toast('网络不稳，已存本地'); return; }
                             if (res.need_photos) {
                                 document.getElementById('photo-block').style.display = 'block';
@@ -1066,6 +1164,9 @@
                         if (v) { handleCode(v); }
                     });
                     document.getElementById('btn-refresh').addEventListener('click', loadOrders);
+                    // 分栏是动态渲染的，点击用事件委托（重新渲染后按钮会换掉）
+                    document.getElementById('task-tabs').addEventListener('click', onOrderTabClick);
+                    document.getElementById('mine-tabs').addEventListener('click', onOrderTabClick);
                     document.getElementById('btn-new-qr').addEventListener('click', createQr);
 
                     // 选客户 -> 加载该客户的机台
@@ -1458,6 +1559,187 @@
                         });
                     }
 
+                    // ---------------- 详情：机台 / 板件补填 ----------------
+                    function loadFixBoard(o) {
+                        var mSel = document.getElementById('d-machine');
+                        if (!mSel) { return; }
+                        if (!o.partner_id) {
+                            mSel.innerHTML = '<option value="">（这张工单没有客户，无法列机台）</option>';
+                            return;
+                        }
+                        post('/machines', {partner_id: o.partner_id}).then(function (res) {
+                            if (!res.ok) { toast(res.error || '读不到机台列表'); return; }
+                            if (!res.machines.length) {
+                                mSel.innerHTML = '<option value="">（该客户还没有机台）</option>';
+                                return;
+                            }
+                            mSel.innerHTML = '<option value="">（选择机台）</option>' +
+                                res.machines.map(function (m) {
+                                    return '<option value="' + m.id + '">' + esc(m.no) +
+                                        (m.model ? ' · ' + esc(m.model) : '') + '</option>';
+                                }).join('');
+                            if (o.machine_id) { mSel.value = String(o.machine_id); }
+                            loadFixProducts(o);
+                        }).catch(function () { toast('网络不稳，读不到机台列表'); });
+                    }
+
+                    function loadFixProducts(o) {
+                        var pSel = document.getElementById('d-product');
+                        var mSel = document.getElementById('d-machine');
+                        if (!pSel || !mSel) { return; }
+                        pSel.innerHTML = '<option value="">（加载中…）</option>';
+                        post('/boards', {machine_id: mSel.value || ''}).then(function (res) {
+                            if (!res.ok || !res.boards.length) {
+                                pSel.innerHTML = '<option value="">（还没有电路板产品）</option>';
+                                return;
+                            }
+                            pSel.innerHTML = '<option value="">（选择板件型号）</option>' +
+                                res.boards.map(function (b) {
+                                    return '<option value="' + b.id + '">' +
+                                        (b.is_model ? '★ ' : '') + esc(b.name) + '</option>';
+                                }).join('');
+                            if (o && o.product_id) { pSel.value = String(o.product_id); }
+                        }).catch(function () { pSel.innerHTML = '<option value="">（读取失败）</option>'; });
+                    }
+
+                    // ---------------- 视频分享 ----------------
+                    // navigator.share() 必须在**点击事件的第一层同步调用**。
+                    // 以前是先 fetch 视频、再 share —— 异步回来时用户手势已经过期，
+                    // 浏览器直接拒绝（NotAllowedError），表现就是“点分享毫无反应”。
+                    // 现在的做法：
+                    //   1) 详情页渲染时后台把视频预取成 File 缓存（≤30MB）；
+                    //   2) 点击时文件已就绪 -> 同步 navigator.share({files})；
+                    //   3) 还没就绪 -> 立刻同步分享链接（同样保住手势）；
+                    //   4) 不支持分享的浏览器（安卓 WebView、部分国产浏览器）弹出可见的降级面板。
+                    var shareFiles = {};        // video_id -> File
+                    var sharePending = {};      // video_id -> pending promise
+
+                    function prepareVideoShare(o) {
+                        if (!navigator.share) { return; }
+                        // 开了省流量模式就别偷偷预下载视频，改用链接分享
+                        if (navigator.connection && navigator.connection.saveData) { return; }
+                        (o.videos || []).forEach(function (v) {
+                            if (!v || !v.id || shareFiles[v.id] || sharePending[v.id]) { return; }
+                            if (v.size && v.size > 30 * 1024 * 1024) { return; }
+                            sharePending[v.id] = fetch(BASE + '/video/' + v.id,
+                                                       {credentials: 'same-origin'})
+                                .then(function (r) {
+                                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                                    return r.blob();
+                                })
+                                .then(function (blob) {
+                                    try {
+                                        shareFiles[v.id] = new File(
+                                            [blob], v.name || ('video-' + v.id + '.mp4'),
+                                            {type: blob.type || 'video/mp4'});
+                                    } catch (e) { /* 老内核没有 File 构造器，只能分享链接 */ }
+                                })
+                                .catch(function () { })
+                                .then(function () { delete sharePending[v.id]; });
+                        });
+                    }
+
+                    function videoById(id) {
+                        var list = (detailOrder && detailOrder.videos) || [];
+                        for (var i = 0; i < list.length; i++) {
+                            if (String(list[i].id) === String(id)) { return list[i]; }
+                        }
+                        return null;
+                    }
+
+                    function absoluteUrl(path) {
+                        return /^https?:\/\//i.test(path) ? path : (window.location.origin + path);
+                    }
+
+                    function legacyCopy(text) {
+                        return new Promise(function (resolve, reject) {
+                            try {
+                                var ta = document.createElement('textarea');
+                                ta.value = text;
+                                ta.setAttribute('readonly', 'readonly');
+                                ta.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0';
+                                document.body.appendChild(ta);
+                                ta.select();
+                                ta.setSelectionRange(0, text.length);
+                                var ok = document.execCommand && document.execCommand('copy');
+                                document.body.removeChild(ta);
+                                ok ? resolve() : reject(new Error('copy unsupported'));
+                            } catch (e) { reject(e); }
+                        });
+                    }
+
+                    function copyText(text) {
+                        // 剪贴板 API 要安全上下文 + 用户手势，WebView / 老浏览器里常常没有；
+                        // 退回到 textarea + execCommand，总比“什么都不发生”强。
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            return navigator.clipboard.writeText(text).catch(function () {
+                                return legacyCopy(text);
+                            });
+                        }
+                        return legacyCopy(text);
+                    }
+
+                    function showShareFallback(video, url) {
+                        if (document.getElementById('share-box')) { return; }
+                        var box = document.createElement('div');
+                        box.id = 'share-box';
+                        box.className = 'card';
+                        box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:76px;' +
+                            'z-index:120;box-shadow:0 10px 30px rgba(40,20,70,.35)';
+                        box.innerHTML =
+                            '<h2>分享这段视频</h2>' +
+                            '<div class="hint">这个浏览器没有系统分享面板，用下面的方式发出去：</div>' +
+                            '<input type="text" id="share-url" readonly value="' + escAttr(url) + '"/>' +
+                            '<div class="row" style="margin-top:10px">' +
+                            '<button class="btn small" id="share-copy" style="flex:1;margin:0">复制链接</button>' +
+                            '<button class="btn small ghost" id="share-open" style="flex:1;margin:0">打开视频</button>' +
+                            '<button class="btn small ghost" id="share-close" style="flex:1;margin:0">关闭</button>' +
+                            '</div>';
+                        document.body.appendChild(box);
+                        document.getElementById('share-close').onclick = function () {
+                            if (box.parentNode) { box.parentNode.removeChild(box); }
+                        };
+                        document.getElementById('share-open').onclick = function () {
+                            window.open(url, '_blank');
+                        };
+                        document.getElementById('share-copy').onclick = function () {
+                            copyText(url).then(function () {
+                                toast('链接已复制，粘贴发给对方即可');
+                            }).catch(function () {
+                                var input = document.getElementById('share-url');
+                                if (input) { input.focus(); input.select(); }
+                                toast('请长按上面的链接手动复制');
+                            });
+                        };
+                    }
+
+                    function shareVideo(videoId) {
+                        var video = videoById(videoId);
+                        if (!video) { toast('视频不存在，请刷新后重试'); return; }
+                        var url = absoluteUrl(video.url);
+                        var name = video.name || 'video.mp4';
+                        var file = shareFiles[videoId];
+                        if (navigator.share) {
+                            var data = {title: name, text: '维修视频：' + name, url: url};
+                            if (file && (!navigator.canShare || navigator.canShare({files: [file]}))) {
+                                data = {files: [file], title: name};
+                            }
+                            try {
+                                navigator.share(data).then(function () {
+                                    toast('已打开系统分享');
+                                }).catch(function (err) {
+                                    if (err && err.name === 'AbortError') { return; }   // 用户自己取消
+                                    toast('分享失败：' + ((err && err.name) || '未知错误') + '，可改用「下载」');
+                                    showShareFallback(video, url);
+                                });
+                                return;
+                            } catch (e) {
+                                toast('系统分享调用失败，改为复制链接');
+                            }
+                        }
+                        showShareFallback(video, url);
+                    }
+
                     function renderDetail(o) {
                         document.getElementById('d-title').textContent = o.name + ' · ' + o.state;
                         var m = o.measure || {};
@@ -1470,23 +1752,47 @@
                                       '" style="margin:0">完成</button>') + '</div>';
                         };
                         var videos = (o.videos || []).map(function (v) {
+                            // 属性里只放 video id：以前把 id|url|文件名拼成字符串，
+                            // 文件名里一旦有 | 或引号，属性就被截断，按钮点了没反应。
                             return '<div style="margin-bottom:10px">' +
-                                '<video src="' + v.url + '" controls preload="metadata" playsinline="1" ' +
+                                '<video src="' + escAttr(v.url) + '" controls preload="metadata" playsinline="1" ' +
                                 'style="width:100%;max-height:200px;border-radius:10px;background:#000"></video>' +
                                 '<div class="video-item"><span>' + esc(v.name) + '（' + v.duration + ' 秒）</span>' +
                                 '<span>' +
-                                '<a class="btn small ghost" href="' + v.url + '" download="' + esc(v.name) +
-                                '" style="margin-right:6px">下载</a>' +
-                                '<button class="btn small ghost" data-sharevideo="' + v.id + '|' + v.url +
-                                '|' + esc(v.name) + '" style="margin:0 6px 0 0">分享</button>' +
+                                '<a class="btn small ghost" href="' + escAttr(v.url) + '" download="' +
+                                escAttr(v.name) + '" style="margin-right:6px">下载</a>' +
+                                '<button class="btn small ghost" data-sharevideo="' + v.id +
+                                '" style="margin:0 6px 0 0">分享</button>' +
                                 '<button class="btn small ghost" data-delvideo="' + v.id +
                                 '" style="margin:0">删除</button></span></div></div>';
                         }).join('') || '<div class="empty">还没有视频（完工前必须上传至少 1 段）</div>';
 
                         var html = '';
-                        html += kv('客户', o.partner) + kv('机台', o.machine) + kv('板件', o.product);
+                        html += kv('客户', o.partner);
+                        if (o.machine_missing || o.product_missing) {
+                            // 扫码建单时没带出机台/板件，详情就只剩 '-'。
+                            // 这里给出补填入口，写回工单（顺带写回二维码），下次扫码就有档案。
+                            html += '<div class="warnbox" style="margin:8px 0">' +
+                                '这张工单还缺 <b>' +
+                                (o.machine_missing ? '机台' : '') +
+                                (o.machine_missing && o.product_missing ? ' / ' : '') +
+                                (o.product_missing ? '板件型号' : '') +
+                                '</b>，补填后详情和报表里就会正常显示。' +
+                                (o.qr ? '<div style="margin-top:4px">二维码：' + esc(o.qr) + '</div>' : '') +
+                                '<select id="d-machine" style="margin-top:8px">' +
+                                '<option value="">（选择机台）</option></select>' +
+                                '<select id="d-product" style="margin-top:6px">' +
+                                '<option value="">（先选机台，再选板件型号）</option></select>' +
+                                '<button class="btn small ghost" data-fixboard="1" ' +
+                                'style="margin-top:8px">补填机台 / 板件</button>' +
+                                '</div>';
+                        }
+                        html += kv('机台', o.machine) + kv('板件', o.product);
                         html += kv('二维码', o.qr) + kv('紧急度', o.urgency) + kv('期限', o.deadline);
-                        html += kv('师傅', o.technician) + kv('错误代码', o.error_code);
+                        html += kv('师傅', o.technician);
+                        html += '<div class="hint" style="margin-top:10px">错误代码</div>' +
+                                '<input type="text" id="d-errcode" placeholder="如 E-021" value="' +
+                                escAttr(o.error_code) + '"/>';
                         html += '<div class="hint" style="margin-top:10px">故障描述</div>' +
                                 '<textarea id="d-fault">' + esc(o.fault) + '</textarea>';
                         html += '<div class="hint" style="margin-top:10px">故障分析判断</div>' +
@@ -1550,17 +1856,42 @@
                             html += '<div class="hint" style="color:#c0392b;margin-top:6px">' +
                                 '还差维修视频：上传至少 1 段后才能提交完工。</div>';
                         }
+                        var sheet = document.getElementById('order-detail');
+                        var keepScroll = (sheet.style.display === 'block') ? sheet.scrollTop : 0;
                         document.getElementById('d-body').innerHTML = html;
+                        // 换 innerHTML 会丢滚动位置：新打开的详情回到顶部，
+                        // 就地刷新（勾测量、删视频、补填）则停在原来的位置。
+                        sheet.scrollTop = keepScroll;
+                        var hint = document.getElementById('d-hint');
+                        if (hint) { hint.textContent = ''; }
+                        if (o.machine_missing || o.product_missing) { loadFixBoard(o); }
+                        prepareVideoShare(o);
                     }
 
                     document.getElementById('d-close').addEventListener('click', function () {
                         document.getElementById('order-detail').style.display = 'none';
+                        var box = document.getElementById('share-box');
+                        if (box && box.parentNode) { box.parentNode.removeChild(box); }
                         detailOrder = null;
+                    });
+
+                    // 选机台 -> 刷新板件型号下拉（补填用）
+                    document.getElementById('order-detail').addEventListener('change', function (ev) {
+                        var el = ev.target;
+                        if (el && el.id === 'd-machine') { loadFixProducts(detailOrder); }
                     });
 
                     document.getElementById('order-detail').addEventListener('click', function (ev) {
                         var el = ev.target, v;
                         if (!el || !el.getAttribute) { return; }
+                        // 详情页自己处理这些动作；不阻断的话，同一个点击会被
+                        // 页面底下的全局委托再处理一遍（完工弹两次确认框就是这个问题）。
+                        if (el.getAttribute('data-measure') || el.getAttribute('data-savework') ||
+                            el.getAttribute('data-fixboard') || el.getAttribute('data-sharevideo') ||
+                            el.getAttribute('data-delvideo') || el.getAttribute('data-complete') ||
+                            el.id === 'btn-video') {
+                            ev.stopPropagation();
+                        }
                         if ((v = el.getAttribute('data-measure'))) {
                             var label = ({resistance: '电阻', voltage: '电压',
                                           inductance: '电感', capacitance: '电容'})[v] || v;
@@ -1576,39 +1907,35 @@
                             return;
                         }
                         if (el.getAttribute('data-savework')) {
-                            post('/save_work', {
+                            var vals = {
                                 order_id: detailOrder.id,
                                 fault: document.getElementById('d-fault').value,
                                 analysis: document.getElementById('d-analysis').value,
-                                process: document.getElementById('d-process').value,
-                                error_code: detailOrder.error_code
-                            }).then(function (res) {
+                                process: document.getElementById('d-process').value
+                            };
+                            var errEl = document.getElementById('d-errcode');
+                            if (errEl) { vals.error_code = errEl.value; }
+                            post('/save_work', vals).then(function (res) {
                                 toast(res.ok ? '已保存' : (res.error || '保存失败'));
                                 if (res.ok) { openOrder(detailOrder.id); }
-                            });
+                            }).catch(function () { toast('网络不稳，没保存成功，请重试'); });
+                            return;
+                        }
+                        if (el.getAttribute('data-fixboard')) {
+                            var mSel = document.getElementById('d-machine');
+                            var pSel = document.getElementById('d-product');
+                            if (!mSel || !pSel) { return; }
+                            if (!mSel.value || !pSel.value) { toast('机台和板件型号都要选'); return; }
+                            post('/save_work', {order_id: detailOrder.id,
+                                                 machine_id: mSel.value,
+                                                 product_id: pSel.value}).then(function (res) {
+                                toast(res.ok ? '已补填机台 / 板件' : (res.error || '补填失败'));
+                                if (res.ok) { openOrder(detailOrder.id); }
+                            }).catch(function () { toast('网络不稳，补填没提交成功'); });
                             return;
                         }
                         if ((v = el.getAttribute('data-sharevideo'))) {
-                            var parts = v.split('|');
-                            var url = parts[1], name = parts[2] || 'video.mp4';
-                            if (navigator.share) {
-                                fetch(url).then(function (r) { return r.blob(); }).then(function (blob) {
-                                    var file = new File([blob], name, {type: blob.type || 'video/mp4'});
-                                    if (navigator.canShare && navigator.canShare({files: [file]})) {
-                                        return navigator.share({files: [file], title: name});
-                                    }
-                                    return navigator.share({title: name, url: window.location.origin + url});
-                                }).catch(function () { toast('分享被取消或不支持'); });
-                            } else {
-                                var abs = window.location.origin + url;
-                                if (navigator.clipboard && navigator.clipboard.writeText) {
-                                    navigator.clipboard.writeText(abs).then(function () {
-                                        toast('已复制视频链接，可粘贴发送');
-                                    }).catch(function () { toast('请长按视频选择保存'); });
-                                } else {
-                                    toast('这台手机不支持分享，可点下载后发送');
-                                }
-                            }
+                            shareVideo(v);
                             return;
                         }
                         if ((v = el.getAttribute('data-delvideo'))) {
