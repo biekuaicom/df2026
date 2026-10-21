@@ -13,3 +13,4 @@ from . import monthly_billing
 from . import repair_service_line
 from . import repair_video
 from . import repair_order
+from . import test_delete_wizard
