@@ -382,3 +382,176 @@ Odoo 20 已装 **`repair`（维修）应用**，原生具备：`repair.order` + 
 **部署前提**：师傅账号必须拥有 `stock.group_stock_user`（原生 `repair.order` 的 CRUD 只授予该组，
 否则连 chatter 消息都发不出去）。可直接把用户加进本模块新建的「机台维修 / 师傅」组，
 它已经 `implied_ids` 了 `stock.group_stock_user`。
+
+## 手机端修复记录（2026-10-19）：详情信息“丢失” + 视频分享没反应
+
+两个现场反馈都在这台机器上复现并定位到了**具体代码**，不是“字段命名不一致 / Pinia 状态没同步”那类问题
+（本项目没有前端状态库，数据直连 PostgreSQL，工单表里数据其实一直都在）。
+
+### 1. 「保存后详情里机台 / 板件 / 错误代码 / 故障描述都不见了」
+
+实测（订单 WH/RO/00063，`id=62`）：详情页里这几项显示 `-`，但数据库里也确实为空，
+不是渲染丢的，而是**根本没录进去**：
+
+| 原因 | 说明 | 修复 |
+|---|---|---|
+| 扫码建单时没有机台/板件可填 | 机台/板件下拉只存在于「生码建单」页；扫老码（`QR-000049` 这类没建档的板）时无处可选，建出来的单就是空的 | 详情页缺机台/板件时出现「补填机台 / 板件」下拉，直接写回工单并回写二维码；扫码信息卡也会提前提示 |
+| 错误代码在详情页只读 | 建单时没带上的错误代码，之后在手机端**没有入口**再填 | 详情页新增「错误代码」输入框，跟着「保存以上内容」一起提交 |
+| 后台表单根本没有这些字段 | `repair.order` 表单里只有调度信息，没有错误代码 / 故障描述 / 分析 / 过程，在 Odoo 里打开工单就“什么都没” | 表单新增「故障信息（手机端录入）」分组 |
+| 一次点击开了两张单 | 日志里 `11:51:10` 与 `11:51:11` 两条 `create_order`，同一张码建出 WH/RO/00062、00063 两张单（连点） | 建单加飞行中锁 + 按钮禁用，实测连点两次只发 1 条请求 |
+
+### 2. 「点视频分享没反应」
+
+根因有两个，叠在一起就是“完全没反应”：
+
+1. **提示被详情页挡住了。** `#toast` 的 `z-index: 50`，而详情浮层 `.detail-sheet` 是 `60`（遮罩 80）。
+   详情页里的任何提示（分享失败、已保存、测量完成…）都渲染在浮层**下面**，用户看不到。
+   实测 `document.elementFromPoint()` 命中的是浮层而不是 toast。→ toast 提到 `z-index: 300`，
+   详情页顶部另加一行 `#d-hint` 状态文字。
+2. **`navigator.share()` 是在 `fetch()` 之后调用的。** 视频要先下载成 File 再分享，等异步回来时
+   用户手势已过期，浏览器按规范直接拒绝（`NotAllowedError`），分享面板根本不会弹；安卓 WebView /
+   部分国产浏览器压根没有 `navigator.share`，老代码只 `toast` 一句“这台手机不支持分享” —— 而这句话
+   又被第 1 条挡住，所以看起来就是“点了没反应”。
+
+现在的实现（`views/mobile_templates.xml`）：
+
+- 详情页渲染时后台预取视频（≤30MB）成 `File` 缓存；
+- 点击「分享」时**在第一层同步**调用 `navigator.share()`：文件就绪就分享文件，没就绪立刻分享链接；
+- 不支持分享的浏览器弹出可见的「复制链接 / 打开视频 / 关闭」面板（剪贴板 API 不可用时退回
+  `textarea + execCommand`）；
+- 失败提示写进 toast + 详情页状态行，并且区分“用户自己取消（AbortError）”与真失败。
+
+### 3. 顺带修掉的
+
+- `save_work` 以前**无条件**写四个字段，建单后那次“补写错误代码”会把已填的故障分析/维修过程清空；
+  现在只写前端真正传上来的字段，并支持补填 `machine_id / product_id`。
+- `esc()` 只转义 `& < >`，视频文件名带引号会把 `data-sharevideo` 属性截断；现在同时转义引号，
+  属性里只放 video id（原来拼 `id|url|文件名`，`|` 也会把解析搞乱）。
+- CSS 里有一处坏的转义（`` .btn.danger { ... }`n `` 之后跟着 `.btn.sel`），会让这条规则解析失败。
+- 详情页重渲染会把滚动位置带走 / 底部导航出现双份确认框（同一个点击被详情页和全局委托各处理一次）。
+
+### 验证方式（都是实测，不是“应该能行”）
+
+```powershell
+# 1) 升级模块（会短暂停 Odoo，约 5 秒）
+D:\Odoo\venv\Scripts\python.exe D:\Odoo\odoo\odoo-bin --config D:\Odoo\odoo.conf -d odoo -u machine_repair --stop-after-init
+# 2) 用计划任务把 Odoo 拉起来（不在当前会话的进程树里，会话结束也不会被带走）
+Start-ScheduledTask -TaskName 'Odoo 20.0 - 服务'
+```
+
+用无头 Chrome + CDP 真机脚本跑过（`D:\Odoo\tmp\probe4.py`、`probe5.py`、`probe6.py`）：
+toast 在浮层之上、分享在点击第一层同步调用且带 `files:1`、没有 share API 时降级面板可见可复制、
+补填只提交 `machine_id/product_id`、连点建单只发 1 条请求、`save_work` 只写传上来的字段。
+
+## 唯一性修复（2026-10-19）：能建出同名的电路板 / 机型 / 故障分类
+
+现场反馈：在「机型专属电路板」里点新建，可以反复建出同名电路板（库里实际出现两份 DDMP / KBD / PB）。
+根因很简单：那个菜单只是把 `product.template` 的列表按类目过滤了一下，新建走的是**标准产品表单**，
+而 Odoo 的产品名称本身不做唯一性校验，模块之前也没加任何约束。
+
+### 补上的唯一性规则
+
+| 对象 | 规则 | 实现 |
+|---|---|---|
+| 电路板 / 通用电子元件（`product.template`） | 同一类目内不允许重名（忽略大小写与首尾空格）；跨类目允许 | `models/product_template.py` 的 `@api.constrains('name', 'categ_id')` |
+| 机型标准模板（`machine.base.template`） | 机型名称唯一 | `models/machine_base_template.py` `@api.constrains('name')` |
+| 故障分类（`repair.fault.category`） | 分类名称唯一 | `models/repair_case.py` `@api.constrains('name')` |
+| 电路板二维码（`machine.board.qr`） | 原厂 SN / 条码唯一（空值允许重复） | `models/board_qr.py` `@api.constrains('sn')` |
+| 包月计费明细（`machine.billing.line`） | 同一机台同一个月只能一行 | `unique(machine_id, period_month)` + `create()` 里的人话校验 |
+
+另外补了 `product.category.is_component`（跟 `is_board` 对称）—— 以前「通用电子元件」类目只能靠 xmlid 认，
+同名校验这类按类目生效的规则就只能覆盖电路板、漏掉元件。两个标志位现在也放到产品类别表单/列表里了
+（`views/product_category_views.xml`），以前 `is_board` 在界面上根本看不见、只能改数据库。
+
+### 已经清理掉的重复数据
+
+| 数据 | 处理 | 备份 |
+|---|---|---|
+| 重复电路板 DDMP(#56)、KBD(#60)、PB(#61) | 确认无任何引用（模板行/二维码/工单/库存/序列号）后删除，保留先建的那条 | 改动前整库备份 `D:\Odoo\backups\` |
+| 重复工单 WH/RO/00073(#72)（QR-000063 两张待抢单） | ORM 正常删除 | — |
+| 重复工单 WH/RO/00063(#62)（QR-000049 两张已完工，连点建单产生的） | Odoo 核心**禁止删除已完工维修单**（`repair.order._unlink_except_confirmed`），按测试数据在备份后强制清理；保留早建的 WH/RO/00062 | `dup-orders-sql-*.json`、视频文件 `dup-video-1-*.3gp` |
+
+### 验证（`odoo-bin shell` 里 13 个用例，全部通过）
+
+```
+PASS 电路板重名 DDMP                -> ValidationError: 同名的电路板「DDMP」已经存在（#48）
+PASS 电路板重名 ddmp（大小写/空格）    -> ValidationError
+PASS 电路板新名 ZZ-NEW              -> 创建成功
+PASS 元件重名 ZZ-COMP               -> ValidationError
+PASS 跨类目同名（电路板 vs 元件）      -> 允许
+PASS 机型模板重名 GAMMA / gamma      -> ValidationError
+PASS 故障分类重名（含空格）            -> ValidationError
+PASS 二维码原厂 SN 重复              -> ValidationError
+PASS 二维码 SN 为空                  -> 允许
+PASS 同机台同月第二条计费明细          -> ValidationError: 机台「01」在 2026-10-01 已经有一条…
+```
+
+## 工单大厅分栏 + 手机端分栏 + 管理员「作废并删除测试单」（2026-10-19）
+
+### 1. 网页端「工单大厅」分栏菜单
+
+大厅原来只显示未完成的工单（domain 写死 draft/pending_claim/confirmed/timeout_alert），
+已完工的单子根本看不到。现在拆成 6 个分栏，每个分栏是独立 action + 独立 domain：
+
+| 分栏 | domain |
+|---|---|
+| 全部 | `[]` |
+| 待抢单 | `[('state','=','pending_claim')]` |
+| 维修中 | `[('state','=','confirmed')]` |
+| 超时接力 | `[('state','=','timeout_alert')]` |
+| 已完工 | `[('state','in',['done','secondary_completed'])]` |
+| 已开票 | `[('invoice_ids','!=',False)]` |
+
+实现要点（都是实测踩出来的）：
+
+* 分栏按钮挂在**大厅专用列表视图** `<header>` 里（`view_repair_hall_list_menu`，extension 视图）。
+  列表视图的 `<header>` 按钮只有带 `display="always"` 才会出现在控制面板上，
+  否则会被塞进右上角那个齿轮/省略号菜单里（第一次做漏了这个属性，界面上一个按钮都没有）。
+* `%(action_xxx)d` 在 arch 里是**加载时解析**的，所以顺序必须是：
+  列表视图 → 6 个 action（action 里引用 view_id）→ 再给列表加 header 按钮（引用 action xmlid），
+  否则 xmlid 还不存在会直接报错。
+* 核心 `repair.order.state` 的中文翻译在这个库里缺失（列表显示 `Done` / `Cancel`），
+  新增计算字段 `state_display`（中文状态）用于列表显示，badge 配色仍按 `state` 判断。
+
+### 2. 手机端分栏菜单
+
+* **任务工单**：待抢单 / 维修中 / 超时接力 / 已完工（看整个车间，带数量角标）
+* **我的工单**：维修中 / 超时接力 / 已完工（只看自己的，带数量角标）
+
+接口 `/machine_repair/mobile/my_orders` 改成按组返回：
+
+```json
+{"groups": {"pending": [...], "repairing": [...], "timeout": [...], "done": [...],
+            "mine_repairing": [...], "mine_timeout": [...], "mine_done": [...]},
+ "counts": {"pending": 9, "done": 2, "mine_done": 0, ...}}
+```
+
+`_order_payload` 增加了 `state_key` / `claimable` / `mine`：
+列表里「抢单」只对没人接的单子出现，「完工 / 开票」只对自己抢到的单子出现
+（以前别人的单也会显示「完工」，点了必然失败）。
+
+### 3. 管理员「作废并删除测试单」
+
+Odoo 核心**禁止删除已完工维修单**（`repair.order._unlink_except_confirmed`），
+测试期造出来的单子以前只能手工动 SQL。现在封成一个向导：
+
+* 入口：工单表单顶部、工单大厅列表顶部（都是 `groups="base.group_system"`，只有管理员可见）；
+* 二次确认：先弹出向导（列出要删的工单 + 备份目录），勾选「我已确认这些是测试数据」后才能点「确认作废并删除」；
+  没勾选直接点会报错、弹窗不关；
+* 列表里没选任何行就点按钮会提示「请先选择要删除的工单」（不会误删全部）；
+* **自动备份**：删除前把工单全部字段、维修服务行、完工快照、聊天记录导出成 JSON，
+  视频二进制单独存成文件，目录默认 `D:\Odoo\data\test-order-backups`
+  （可用系统参数 `machine_repair.test_order_backup_dir` 覆盖）；
+* 删除顺序：快照/视频/消息/附件/关注者 → 未完工的先走原生「取消」→ 最后删工单，全程一个事务，失败整单回滚。
+
+### 4. 本次清理
+
+* 3 张空单（WH/RO/00003、00042、00056）已用上面的向导删除，备份在 `test-order-backups`；
+* 剩余 11 张工单：待抢单 9、已完工 2。
+
+### 5. 验证
+
+* 网页端（无头 Chrome 实测）：控制面板出现 全部/待抢单/维修中/超时接力/已完工/已开票/作废并删除测试单 七个按钮，
+  点「已完工」切到对应 action、只显示 2 条，状态列显示中文；
+* 向导实测：不选行 → 拒绝；选中 1 行 → 弹窗列出该单；不勾选确认 → 报错且弹窗不关；点取消 → 未删除任何数据；
+* 手机端（无头 Chrome 实测）：任务工单 4 个分栏（待抢单 9 / 已完工 2）、我的工单 3 个分栏，切换正常，页面版本 v33。
