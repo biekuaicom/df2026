@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- 方案阶段 1 步骤 1.2：两个产品类别。
-         「专属电路板」勾上 is_board，模板的器件选择器只允许选这一类目下的产品。
+         「专属电路板」勾上 is_board，模板的器件选择器只允许选这一类目下的产品；
+         「通用电子元件」勾上 is_component，用于同名校验等按类目生效的规则。
          具体产品的「追溯」仍需逐个设为「按唯一序列号」（tracking = serial）。 -->
     <record id="product_category_board" model="product.category">
         <field name="name">专属电路板</field>
         <field name="is_board" eval="True"/>
+        <field name="is_component" eval="False"/>
     </record>
 
     <record id="product_category_component" model="product.category">
         <field name="name">通用电子元件</field>
         <field name="is_board" eval="False"/>
+        <field name="is_component" eval="True"/>
     </record>
 </odoo>
