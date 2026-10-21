@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 产品类别上的两个维修标志位：以前 is_board 只能在数据库里改，
+         界面上根本看不到，新建类别时也没法标成「专属电路板」。 -->
+    <record id="view_product_category_form_machine_repair" model="ir.ui.view">
+        <field name="name">product.category.form.machine_repair</field>
+        <field name="model">product.category</field>
+        <field name="inherit_id" ref="product.product_category_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='first']" position="inside">
+                <field name="is_board"/>
+                <field name="is_component"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_product_category_list_machine_repair" model="ir.ui.view">
+        <field name="name">product.category.list.machine_repair</field>
+        <field name="model">product.category</field>
+        <field name="inherit_id" ref="product.product_category_list_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list" position="inside">
+                <field name="is_board" optional="show"/>
+                <field name="is_component" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
