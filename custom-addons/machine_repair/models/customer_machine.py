@@ -17,6 +17,15 @@ class CustomerMachine(models.Model):
     _rec_name = 'machine_no'
 
     partner_id = fields.Many2one('res.partner', '客户', required=True, tracking=True, index=True)
+    # 注意：related 字段默认 readonly=True（Odoo 源码 fields.py: attrs['readonly'] = attrs.get('readonly', True)），
+    # 必须显式写 readonly=False 才会装上 inverse（见 setup_related：not (self.readonly or 目标字段只读)）。
+    # 有 inverse 才能在机台表单上直接改客户类型，并把值写回 res.partner.customer_type ——
+    # 客户类型是客户档案上的属性，同一客户的机台共用；改客户档案时这里的值也会自动跟着重算。
+    customer_type = fields.Selection(
+        related='partner_id.customer_type', string='客户类型', store=True, index=True,
+        readonly=False,
+        help='跟随客户档案。直接在这里改会同步回客户（该客户名下所有机台统一按这个类型处理）：'
+             '包月用户按机台收包月费；活期用户不包月、所有器件一律按「另计费」。')
     machine_no = fields.Char('机台编号', required=True, tracking=True, help='如：M-001')
     template_id = fields.Many2one('machine.base.template', '机型模板', required=True, tracking=True)
     machine_model = fields.Char('机型', related='template_id.name', store=False, readonly=True)
@@ -61,10 +70,13 @@ class CustomerMachine(models.Model):
             return
         if self.line_ids:
             return  # 已有基线就不动，避免覆盖手工调整
+        # 活期用户没有包月，带进来的器件一律是「另计费」
+        billing_type = 'extra' if self.partner_id.customer_type == 'adhoc' else 'monthly'
         self.line_ids = [fields.Command.create({
             'product_id': tline.product_id.id,
             'is_sn_required': tline.is_sn_required,
             'qty': tline.qty,
+            'billing_type': billing_type,
             'template_line_id': tline.id,
             'note': tline.note,
         }) for tline in self.template_id.line_ids]
@@ -76,17 +88,70 @@ class CustomerMachine(models.Model):
                 raise UserError('请先选择机型模板。')
             if machine.line_ids:
                 raise UserError('该机台已有器件基线。如确需重建，请先删除现有行。')
+            billing_type = 'extra' if machine.partner_id.customer_type == 'adhoc' else 'monthly'
             commands = []
             for tline in machine.template_id.line_ids:
                 commands.append((0, 0, {
                     'product_id': tline.product_id.id,
                     'is_sn_required': tline.is_sn_required,
                     'qty': tline.qty,
+                    'billing_type': billing_type,
                     'template_line_id': tline.id,
                     'note': tline.note,
                 }))
             machine.write({'line_ids': commands})
         return True
+
+    # ---------------------------------------------------------------- 客户类型（包月 / 活期）
+    # 活期用户：不包月 + 器件全部另计。界面上把包月字段置灰，这里再把数据兜住，
+    # 避免从导入、批量复制、手机端等入口漏进来「活期却带着包月单价」的脏数据。
+    ADHOC_MONTHLY_RESET = {
+        'monthly_fee': 0.0,
+        'monthly_start_date': False,
+        'monthly_end_date': False,
+        'monthly_active': False,
+    }
+
+    def _is_adhoc(self):
+        return self.partner_id.customer_type == 'adhoc'
+
+    @api.onchange('partner_id')
+    def _onchange_partner_customer_type(self):
+        if self.partner_id.customer_type != 'adhoc':
+            return
+        self.monthly_fee = 0.0
+        self.monthly_start_date = False
+        self.monthly_end_date = False
+        self.monthly_active = False
+        for line in self.line_ids:
+            line.billing_type = 'extra'
+
+    def _normalize_adhoc(self):
+        """活期机台：清掉包月字段，器件行强制「另计费」。"""
+        adhoc = self.filtered(lambda machine: machine._is_adhoc())
+        if not adhoc:
+            return
+        vals = {}
+        for fname, empty in self.ADHOC_MONTHLY_RESET.items():
+            if any(machine[fname] != empty for machine in adhoc):
+                vals[fname] = empty
+        if vals:
+            adhoc.with_context(machine_repair_adhoc_sync=True).write(vals)
+        lines = adhoc.line_ids.filtered(lambda line: line.billing_type != 'extra')
+        if lines:
+            lines.with_context(machine_repair_adhoc_sync=True).write({'billing_type': 'extra'})
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        machines = super().create(vals_list)
+        machines._normalize_adhoc()
+        return machines
+
+    def write(self, vals):
+        result = super().write(vals)
+        if not self.env.context.get('machine_repair_adhoc_sync'):
+            self._normalize_adhoc()
+        return result
 
 
 class CustomerMachineLine(models.Model):
@@ -133,6 +198,26 @@ class CustomerMachineLine(models.Model):
                 line.extra_subtotal = (line.extra_price or 0.0) * (line.qty or 0.0)
             else:
                 line.extra_subtotal = 0.0
+
+    # ---------------------------------------------------------------- 活期用户：器件只能另计
+    def _force_adhoc_extra(self):
+        to_fix = self.filtered(
+            lambda line: line.machine_id.partner_id.customer_type == 'adhoc'
+            and line.billing_type != 'extra')
+        if to_fix:
+            to_fix.with_context(machine_repair_adhoc_sync=True).write({'billing_type': 'extra'})
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        lines = super().create(vals_list)
+        lines._force_adhoc_extra()
+        return lines
+
+    def write(self, vals):
+        result = super().write(vals)
+        if not self.env.context.get('machine_repair_adhoc_sync'):
+            self._force_adhoc_extra()
+        return result
 
     template_line_id = fields.Many2one(
         'machine.base.template.line', '来源模板行', ondelete='set null', readonly=True,
