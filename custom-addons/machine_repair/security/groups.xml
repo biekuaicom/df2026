@@ -9,4 +9,15 @@
         <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
         <field name="comment">维修师傅：可抢单、维修、退单、转接力；自动带上「库存 / 用户」权限。</field>
     </record>
+
+    <!-- 位置监控管理员：唯一能查看人员实时位置、历史轨迹、工作位置配置的组。
+         师傅组**没有**任何位置模型的 ACL，服务端只按登录人自己的坐标回写，
+         因此普通账号即使直接调 RPC 也读不到别人的位置。
+         系统管理员（base.group_system）同样被授予访问权，避免漏配。 -->
+    <record id="group_machine_repair_location_manager" model="res.groups">
+        <field name="name">机台维修 / 位置监控管理员</field>
+        <field name="comment">可查看人员实时位置与历史上报、维护工作位置（电子围栏）、修改定位设置。位置数据属于敏感信息，只授予管理人员。</field>
+        <!-- 默认把 admin 加进来，装完即可在「机台维修 → 位置监控」使用 -->
+        <field name="user_ids" eval="[(4, ref('base.user_admin'))]"/>
+    </record>
 </odoo>
