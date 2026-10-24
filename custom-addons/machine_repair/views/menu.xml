@@ -10,4 +10,11 @@
     <menuitem id="menu_customer_machine" name="客户机台台账"
               parent="menu_machine_repair_base"
               action="action_customer_machine" sequence="20"/>
+    <!-- 发货提醒：已完工但还没发货的工单（每天 9 点 / 15 点在工单动态里也会提醒） -->
+    <menuitem id="menu_repair_ship_pending" name="发货提醒"
+              parent="menu_machine_repair_root"
+              action="action_repair_ship_pending" sequence="26"/>
+    <menuitem id="menu_repair_shipments" name="发货记录"
+              parent="menu_machine_repair_root"
+              action="action_machine_repair_shipment" sequence="27"/>
 </odoo>
