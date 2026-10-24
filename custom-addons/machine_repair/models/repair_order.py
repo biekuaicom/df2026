@@ -87,6 +87,39 @@ class RepairOrder(models.Model):
     repair_round = fields.Integer('维修轮次', compute='_compute_rework')
     is_rework = fields.Boolean('返修', compute='_compute_rework', store=False)
 
+    # ---------------------------------------------------------------- 发货（快递单号 + 包装照片）
+    shipment_id = fields.Many2one(
+        'machine.repair.shipment', '发货单', copy=False, readonly=True, index=True,
+        ondelete='set null',
+        help='确认发货后回填：一张发货单可以合并多张工单，共用一个快递单号。')
+    shipped = fields.Boolean('已发货', compute='_compute_shipped', store=True, index=True)
+    ship_status = fields.Selection(
+        [('unshipped', '未发货'), ('shipped', '已发货')],
+        string='发货状态', compute='_compute_shipped', store=True, index=True)
+    tracking_no = fields.Char(
+        '快递单号', related='shipment_id.tracking_no', store=True, readonly=True)
+    ship_date = fields.Datetime(
+        '发货时间', related='shipment_id.ship_date', store=True, readonly=True)
+    ship_photo_count = fields.Integer('包装照片数', compute='_compute_ship_photo_count')
+    warranty_start_pending = fields.Boolean(
+        '保修待发货起算', copy=False, readonly=True,
+        help='活期客户首次维修：保修不按完工日算，等确认发货后按快递时间起算。')
+    ship_reminder_date = fields.Date('发货提醒日期', copy=False, readonly=True)
+    ship_reminder_slot = fields.Selection(
+        [('am', '上午 9 点'), ('pm', '下午 3 点')], string='发货提醒时段',
+        copy=False, readonly=True)
+
+    @api.depends('shipment_id')
+    def _compute_shipped(self):
+        for order in self:
+            order.shipped = bool(order.shipment_id)
+            order.ship_status = 'shipped' if order.shipment_id else 'unshipped'
+
+    @api.depends('shipment_id.photo_ids')
+    def _compute_ship_photo_count(self):
+        for order in self:
+            order.ship_photo_count = len(order.shipment_id.photo_ids)
+
     # 阶段 4：完工后修改限制
     MODIFY_LIMIT = 3
 
@@ -177,6 +210,24 @@ class RepairOrder(models.Model):
         """手动再拉一次另计维修服务行（台账改价 / 加板件 / 外来维修时用）。"""
         self._apply_extra_charges()
         return True
+
+    def action_ship_orders(self):
+        """打开「合并发货」向导：单张单直接带进来，列表里多选时把选中的都带过来。"""
+        if not self:
+            raise UserError('请先勾选要发货的工单：只有「已完工、还没发货」的单才需要发货。')
+        orders = self.filtered(
+            lambda order: order.state in ('done', 'secondary_completed')
+            and not order.shipment_id)
+        if not orders:
+            raise UserError('选中的工单不需要发货：可能还没完工，或者已经发过货了。')
+        return {
+            'type': 'ir.actions.act_window',
+            'name': '合并发货',
+            'res_model': 'machine.repair.ship.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_order_ids': [(6, 0, orders.ids)]},
+        }
 
     def action_resolve_scan(self):
         """解析扫码内容：优先找已有二维码，找不到就建档（外来维修现场补码）。"""
@@ -501,6 +552,8 @@ class RepairOrder(models.Model):
         self._ensure_repair_lot()
         self._check_parts_serial_numbers()
         self._check_videos()
+        # 必须在状态变成 done 之前打标记：完工后再写单会占「完工后修改次数」的额度
+        self._mark_warranty_pending()
         result = super().action_repair_done()
         self._refresh_board_warranty()
         self._create_repair_case()
@@ -535,11 +588,18 @@ class RepairOrder(models.Model):
 
         条件：本单绑定了二维码，且本单是**收费**维修（没有勾「保修内不计价」）。
         保修月数取本单的「本次保修月数」（选机台时已从台账带出，外来维修可手填）。
+
+        例外（活期客户 + 首次维修）：保修不在这里起算，等确认发货后按**快递时间**起算，
+        见 `_mark_shipped` / `_start_warranty_from_shipment`。
         """
         today = fields.Date.context_today(self)
         for order in self:
             board_qr = order.board_qr_id
             if not board_qr or order.under_warranty:
+                continue
+            if order.warranty_start_pending:
+                board_qr.message_post(
+                    body='首次维修（活期客户）：工单 %s 的保修等发货后按快递时间起算。' % order.name)
                 continue
             months = int(order.warranty_months or board_qr.warranty_months or 12)
             board_qr.write({'warranty_start_date': today, 'warranty_months': months})
@@ -547,6 +607,101 @@ class RepairOrder(models.Model):
                 body='过保维修完工，保修从 %s 起重新计算 %s 个月（工单 %s）。'
                      % (today, months, order.name))
         return True
+
+    # ---------------------------------------------------------------- 发货 / 保修起算
+    def _mark_warranty_pending(self):
+        """活期客户 + 首次维修 + 收费维修 → 保修等发货后再起算。
+
+        「第一次维修的器件」按本单之前没有任何已完工工单来判定（repair_round == 1）。
+        包月客户的保修口径不变（完工日重新起算）。
+        """
+        for order in self:
+            if order.under_warranty or not order.board_qr_id:
+                continue
+            if order.partner_id.customer_type != 'adhoc':
+                continue
+            if order.repair_round > 1:
+                continue
+            order.warranty_start_pending = True
+        return True
+
+    def _start_warranty_from_shipment(self, ship_date=None):
+        """发货确认：把「待发货起算」的工单保修起点改成快递时间。"""
+        ship_date = ship_date or fields.Datetime.now()
+        start = fields.Date.context_today(self, timestamp=ship_date)
+        for order in self.filtered('warranty_start_pending'):
+            board_qr = order.board_qr_id
+            if not board_qr:
+                order.with_context(machine_repair_skip_modify_limit=True).write(
+                    {'warranty_start_pending': False})
+                continue
+            months = int(order.warranty_months or board_qr.warranty_months or 12)
+            board_qr.write({'warranty_start_date': start, 'warranty_months': months})
+            board_qr.message_post(
+                body='已发货，保修从 %s（快递时间）起计算 %s 个月（工单 %s）。'
+                     % (start, months, order.name))
+            order.with_context(machine_repair_skip_modify_limit=True).write(
+                {'warranty_start_pending': False})
+        return True
+
+    def _mark_shipped(self, shipment):
+        """把工单挂到发货单上：状态变「已发货」，保修按快递时间起算。
+
+        注意：已完工工单的 write 会被「每天最多改 3 次」的限制拦住，
+        发货属于系统动作，这里统一带 skip 上下文，不占师傅的修改次数。
+        """
+        ship_date = shipment.ship_date or fields.Datetime.now()
+        for order in shipment.order_ids:
+            order.with_context(machine_repair_skip_modify_limit=True).write(
+                {'shipment_id': shipment.id})
+            order.message_post(
+                body='已发货：快递单号 %s（发货单 %s，%s 张工单合并寄出）。'
+                     % (shipment.tracking_no, shipment.name, len(shipment.order_ids)))
+        shipment.order_ids._start_warranty_from_shipment(ship_date)
+        return True
+
+    @api.model
+    def _cron_ship_reminder(self):
+        """每天 9:00 / 15:00：给「已完工但还没发货」的工单写一条动态提醒。
+
+        用每小时跑一次的 cron + 时段判断实现（服务器补跑、重启都不会漏），
+        ship_reminder_date / ship_reminder_slot 保证同一时段不会重复提醒。
+        """
+        now = fields.Datetime.now()
+        # 定时任务跑在 OdooBot 下，它没有个人时区；直接用 context_timestamp 会退化成 UTC，
+        # 结果变成「UTC 9 点 / 15 点」= 北京时间 17 点 / 23 点。这里按公司时区（默认北京）算。
+        tz = (self.env.company.partner_id.tz
+              or self.env['ir.config_parameter'].sudo().get_str(
+                  'machine_repair.ship_reminder_tz', 'Asia/Shanghai')
+              or 'Asia/Shanghai')
+        local = fields.Datetime.context_timestamp(self.with_context(tz=tz), now)
+        if local.hour not in (9, 15):
+            return 0
+        slot = 'am' if local.hour == 9 else 'pm'
+        today = local.date()
+        orders = self.search([
+            ('state', 'in', ('done', 'secondary_completed')),
+            ('shipment_id', '=', False),
+        ])
+        sent = 0
+        label = '上午 9 点' if slot == 'am' else '下午 3 点'
+        # 提醒的是“管理员发货”：除了写在工单动态里，也推给系统管理员（右下角站内提醒）
+        admin_partners = self.env.ref('base.group_system').sudo().user_ids.mapped(
+            'partner_id').filtered('active')
+        for order in orders:
+            if order.ship_reminder_date == today and order.ship_reminder_slot == slot:
+                continue
+            order.with_context(machine_repair_skip_modify_limit=True).write({
+                'ship_reminder_date': today, 'ship_reminder_slot': slot,
+            })
+            order.message_post(
+                body='【发货提醒 · %s】本单已完工，还没有发货。'
+                     '请管理员安排快递，在手机端「消息 → 发货」里勾选工单、'
+                     '扫快递单号并拍照后点「确定发货」。' % label,
+                partner_ids=admin_partners.ids or None,
+                subtype_xmlid='mail.mt_note')
+            sent += 1
+        return sent
 
     # ---------------------------------------------------------------- 阶段 5：快照
     def _create_repair_case(self):
