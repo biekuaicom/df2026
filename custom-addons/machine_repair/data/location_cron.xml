@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- 每天凌晨清理过期位置流水（保留天数见「机台维修 → 配置 → 定位设置」） -->
+        <record forcecreate="True" id="ir_cron_machine_repair_location_purge" model="ir.cron">
+            <field name="name">机台维修：清理过期位置记录（每天）</field>
+            <field name="model_id" ref="model_machine_repair_location_ping"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_purge_old_pings()</field>
+            <field name="active" eval="True"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="priority">5</field>
+        </record>
+    </data>
+</odoo>
