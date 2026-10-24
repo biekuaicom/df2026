@@ -242,6 +242,25 @@
 
                         <div id="history-box" style="margin-top:10px"></div>
 
+                        <!-- 活期客户：建单时可以改「本次保修月数」；首次维修的保修从发货快递时间起算 -->
+                        <div id="warranty-box" style="display:none;margin-top:10px">
+                            <span class="field-label">本次保修月数（活期客户可改；首次维修从发货快递时间起算）</span>
+                            <select id="warranty-months">
+                                <option value="1">1 个月</option>
+                                <option value="2">2 个月</option>
+                                <option value="3">3 个月</option>
+                                <option value="4">4 个月</option>
+                                <option value="5">5 个月</option>
+                                <option value="6">6 个月</option>
+                                <option value="7">7 个月</option>
+                                <option value="8">8 个月</option>
+                                <option value="9">9 个月</option>
+                                <option value="10">10 个月</option>
+                                <option value="11">11 个月</option>
+                                <option value="12" selected="selected">12 个月</option>
+                            </select>
+                        </div>
+
                         <div style="margin-top:12px">
                             <div class="hint" style="margin-bottom:6px">紧急度（决定完成期限）：</div>
                             <div class="row" id="urgency-row">
@@ -309,16 +328,18 @@
                     </div>
                     </div>
 
-                    <!-- 消息：工单动态（系统+聊天）+ 内嵌讨论模块 -->
+                    <!-- 消息：工单动态（系统+聊天）/ 讨论 / 开票 / 发货 -->
                     <div id="view-msg" style="display:none">
-                        <div class="tabs">
+                        <div class="tabs subtabs">
                             <button class="tab active" data-msg-tab="timeline">工单动态</button>
                             <button class="tab" data-msg-tab="discuss">讨论</button>
+                            <button class="tab" data-msg-tab="invoice">开票 <b id="invoice-count"></b></button>
+                            <button class="tab" data-msg-tab="ship">发货 <b id="ship-count"></b></button>
                         </div>
                         <div id="msg-timeline">
                             <div class="card">
                                 <h2>工单动态</h2>
-                                <div class="hint">系统事件（创建/发布/抢单/超时/完工/开票）与聊天内容按时间合并显示。</div>
+                                <div class="hint">系统事件（创建/发布/抢单/超时/完工/开票/发货）与聊天内容按时间合并显示。</div>
                                 <button class="btn ghost" id="btn-timeline-refresh" style="margin-top:10px">刷新</button>
                                 <div id="timeline-list" style="margin-top:10px"></div>
                             </div>
@@ -326,6 +347,29 @@
                         <div id="msg-discuss" style="display:none">
                             <div class="card" style="padding:0;overflow:hidden">
                                 <iframe id="discuss-frame" style="width:100%;height:78vh;border:0;display:block"></iframe>
+                            </div>
+                        </div>
+                        <div id="msg-invoice" style="display:none">
+                            <div class="card">
+                                <h2>待开票</h2>
+                                <div class="hint">所有已完工、还没有开票的工单。师傅账号只能看，开票要会计/管理员。</div>
+                                <button class="btn ghost" id="btn-invoice-refresh" style="margin-top:10px">刷新</button>
+                                <div id="invoice-list" style="margin-top:10px"></div>
+                            </div>
+                        </div>
+                        <div id="msg-ship" style="display:none">
+                            <div class="card">
+                                <h2>待发货</h2>
+                                <div class="hint">所有已完工、还没有发货的工单。勾选要一起寄出的几张单（一个快递单号可以寄多块板），
+                                    再点下面「合并发货」。</div>
+                                <div class="row" style="margin-top:10px">
+                                    <button class="btn small ghost" id="btn-ship-all">全选</button>
+                                    <button class="btn small ghost" id="btn-ship-none">清空</button>
+                                    <button class="btn small ghost" id="btn-ship-refresh">刷新</button>
+                                </div>
+                                <div id="ship-list" style="margin-top:10px"></div>
+                                <button class="btn ok" id="btn-ship-open" style="margin-top:10px"
+                                        disabled="disabled">合并发货（已选 0）</button>
                             </div>
                         </div>
                     </div>
@@ -340,7 +384,7 @@
                         </div>
                     </div>
 
-                    <!-- 我：我的工单 + 账号 -->
+                    <!-- 我：我的工单 + 账号（定位在后台全自动上报，不在这里显示） -->
                     <div id="view-me" style="display:none">
                         <div class="card">
                             <h2>我的工单</h2>
@@ -353,7 +397,7 @@
                         <div class="card">
                             <h2>账号</h2>
                             <div class="kv"><span>当前用户</span><b><t t-out="user_name"/></b></div>
-                            <div class="kv"><span>页面版本</span><b>v33</b></div>
+                            <div class="kv"><span>页面版本</span><b>v39</b></div>
                             <button class="btn ghost" id="btn-logout" style="margin-top:10px">退出登录</button>
                         </div>
                     </div>
@@ -383,6 +427,23 @@
                     </div>
                 </div>
 
+                <!-- 圆环进度：视频上传、App 内转发前的下载都用它 -->
+                <div id="progress-mask" class="mask" style="z-index:110">
+                    <div class="dialog" style="text-align:center">
+                        <svg width="92" height="92" viewBox="0 0 92 92"
+                             style="transform:rotate(-90deg);display:inline-block">
+                            <circle cx="46" cy="46" r="38" fill="none" stroke="#ece8f5" stroke-width="8"/>
+                            <circle id="progress-ring" cx="46" cy="46" r="38" fill="none"
+                                    stroke="#5B3A8F" stroke-width="8" stroke-linecap="round"
+                                    stroke-dasharray="238.76" stroke-dashoffset="238.76"
+                                    style="transition:stroke-dashoffset .18s linear"/>
+                        </svg>
+                        <div class="dialog-text" id="progress-text"
+                             style="text-align:center;font-size:20px;font-weight:700;margin-top:4px">0%</div>
+                        <div class="hint" id="progress-hint" style="text-align:center;margin-top:2px"></div>
+                    </div>
+                </div>
+
                 <div id="order-detail" class="detail-sheet">
                     <div class="detail-head">
                         <b id="d-title">工单详情</b>
@@ -391,7 +452,42 @@
                     <div id="d-hint" class="hint" style="min-height:18px;color:#1e7b45;margin-bottom:4px"></div>
                     <div id="d-body"></div>
                 </div>
-                <input type="file" id="video-input" accept="video/*" capture="environment" style="display:none"/>
+
+                <!-- 合并发货：勾几张完工的工单 -> 扫一个快递单号 -> 拍包装照片 -> 确定发货 -->
+                <div id="ship-sheet" class="detail-sheet" style="z-index:70">
+                    <div class="detail-head">
+                        <b>合并发货</b>
+                        <button class="btn small ghost" id="ship-close" style="margin:0">关闭</button>
+                    </div>
+                    <div id="ship-hint" class="hint" style="min-height:18px;color:#1e7b45;margin-bottom:4px"></div>
+                    <div class="card">
+                        <h2>本次发货的工单</h2>
+                        <div id="ship-sel-list"></div>
+                    </div>
+                    <div class="card">
+                        <h2>快递单号</h2>
+                        <input type="text" id="ship-tracking" placeholder="扫快递单条码，或手工填写"/>
+                        <div class="row" style="margin-top:8px">
+                            <button class="btn small ghost" id="btn-ship-scan" style="margin:0">扫快递单</button>
+                            <button class="btn small ghost" id="btn-ship-paste" style="margin:0">粘贴</button>
+                        </div>
+                        <input type="text" id="ship-carrier" placeholder="快递公司（选填）" style="margin-top:8px"/>
+                    </div>
+                    <div class="card">
+                        <h2>包装照片（至少 1 张）</h2>
+                        <div class="hint">外箱、内包装、板件叠放都拍上，售后按快递单号就能查到。</div>
+                        <div class="thumbs" id="ship-thumbs"></div>
+                        <div class="row" style="margin-top:8px">
+                            <button class="btn small" id="btn-ship-camera" style="margin:0">拍照</button>
+                            <button class="btn small ghost" id="btn-ship-album" style="margin:0">从相册选（可多张）</button>
+                        </div>
+                    </div>
+                    <button class="btn ok" id="btn-ship-confirm">确定发货</button>
+                </div>
+                <input type="file" id="ship-photo-input" accept="image/*" multiple="multiple" style="display:none"/>
+                <input type="file" id="ship-camera-input" accept="image/*" capture="environment" style="display:none"/>
+                <input type="file" id="video-record-input" accept="video/*" capture="environment" style="display:none"/>
+                <input type="file" id="video-input" accept="video/*" multiple="multiple" style="display:none"/>
 
                 <nav class="bottomnav">
                     <button class="nav-item" data-view="msg"><span class="ico">✉</span>消息</button>
@@ -454,6 +550,10 @@
                     var zxReader = null, scanMode = 'qr', scanning = false, frames = 0, ctx2d = null;
                     var urgency = 'normal';
                     var newQr = null;
+                    // 发货：勾选的待发货工单 / 本次拍的包装照片 / 扫快递单后是否回到发货页
+                    var shipPicked = {}, shipPhotos = [], shipScanReturn = false;
+                    // 保修月数下拉只在“换了一块板”时重置，避免拍完照片刷新界面把用户的选择冲掉
+                    var warrantyQrId = null;
                     var QUEUE_KEY = 'mr_queue_v1';
                     var PHOTO_KEY = 'mr_photos_v1';
                     var STATE_CLASS = {
@@ -608,6 +708,19 @@
                             toast('已扫到条码：' + text);
                             return;
                         }
+                        if (mode === 'track') {
+                            // 扫快递单：写回发货页的「快递单号」，再回到发货页
+                            var input = document.getElementById('ship-tracking');
+                            if (input) { input.value = text; }
+                            toast('已扫到快递单号：' + text);
+                            if (shipScanReturn) {
+                                shipScanReturn = false;
+                                switchView('msg');
+                                switchMsgTab('ship');
+                                document.getElementById('ship-sheet').style.display = 'block';
+                            }
+                            return;
+                        }
                         handleCode(text);
                     }
                     function startCamera(mode) {
@@ -732,6 +845,7 @@
                         var html = '';
                         html += kv('二维码', q.name);
                         html += kv('客户', q.customer);
+                        if (q.customer_type_label) { html += kv('客户类型', q.customer_type_label); }
                         html += kv('机台', q.machine);
                         html += kv('板件型号', q.product);
                         html += kv('包月', (q.monthly_start || '-') + ' ~ ' + (q.monthly_end || '-'));
@@ -739,6 +853,19 @@
                                 '<span class="tag ' + (q.in_warranty ? 'ok' : 'bad') + '">' +
                                 esc(q.warranty_state) + '</span> ' + esc(q.warranty_end || '') + '</b></div>';
                         html += kv('已维修次数', q.repair_count);
+                        // 活期客户：可以改本次保修月数（首次维修从发货快递时间起算）
+                        var wBox = document.getElementById('warranty-box');
+                        if (wBox) {
+                            var isAdhoc = q.customer_type === 'adhoc';
+                            wBox.style.display = isAdhoc ? 'block' : 'none';
+                            if (isAdhoc && String(warrantyQrId) !== String(q.id)) {
+                                var sel = document.getElementById('warranty-months');
+                                if (sel && q.warranty_months) {
+                                    sel.value = String(q.warranty_months);
+                                }
+                                warrantyQrId = q.id;
+                            }
+                        }
                         if (!q.machine || !q.product) {
                             html += '<div class="hint" style="color:#c0392b;margin-top:6px">' +
                                 '这张码还没有' + (!q.machine ? '机台' : '') +
@@ -885,6 +1012,7 @@
                                      ['done', '已完工']];
 
                     function orderRow(o) {
+                        var isDone = (o.state_key === 'done' || o.state_key === 'secondary_completed');
                         var html = '<div class="order" data-detail="' + o.id + '"><div class="info"><b>' + esc(o.name) + '</b> ' +
                             stateTag(o.state) + '<br/>' +
                             esc(o.urgency) + ' · ' + esc(o.machine || '-') +
@@ -892,6 +1020,11 @@
                             '<br/>期限 ' + esc(o.deadline || '-') +
                             (o.overdue ? ' <span class="tag bad">超期</span>' : '') +
                             (o.invoiced ? ' <span class="tag ok">已开票</span>' : '') +
+                            (isDone
+                                ? (o.shipped
+                                    ? ' <span class="tag ok">已发货 ' + esc(o.tracking_no || '') + '</span>'
+                                    : ' <span class="tag warn">未发货</span>')
+                                : '') +
                             (o.has_photos ? '' : ' <span class="tag warn">缺正反面照片</span>') +
                             '</div><div class="row">' +
                             '<button class="btn small ghost" data-detail="' + o.id + '">详情</button>';
@@ -964,8 +1097,192 @@
                             ordersData = {groups: res.groups || {}, counts: res.counts || {}};
                             renderTask();
                             renderMine();
+                            renderMsgGroups();
                             updateBadge();
                         }).catch(function () { toast('当前离线'); updateBadge(); });
+                    }
+
+                    // ---------------- 消息 → 开票 / 发货 ----------------
+                    function renderMsgGroups() {
+                        renderInvoiceList();
+                        renderShipList();
+                    }
+
+                    function doneRowInfo(o) {
+                        return '<div class="info"><b>' + esc(o.name) + '</b> ' + stateTag(o.state) +
+                            '<br/>' + esc(o.machine || '-') +
+                            (o.partner ? ' · ' + esc(o.partner) : '') +
+                            (o.tracking_no ? '<br/>快递单号：' + esc(o.tracking_no) : '') +
+                            '</div>';
+                    }
+
+                    function renderInvoiceList() {
+                        var box = document.getElementById('invoice-list');
+                        if (!box) { return; }
+                        var list = (ordersData.groups || {}).invoice || [];
+                        var counter = document.getElementById('invoice-count');
+                        var total = (ordersData.counts || {}).invoice || 0;
+                        if (counter) { counter.textContent = total ? total : ''; }
+                        if (!list.length) {
+                            box.innerHTML = '<div class="empty">没有待开票的工单</div>';
+                            return;
+                        }
+                        box.innerHTML = list.map(function (o) {
+                            var html = '<div class="order">' + doneRowInfo(o) + '<div class="row">' +
+                                '<button class="btn small ghost" data-detail="' + o.id + '">详情</button>';
+                            if (window.__canInvoice && !o.invoiced) {
+                                html += '<button class="btn small" data-invoice="' + o.id + '">开票</button>';
+                            } else if (!window.__canInvoice) {
+                                html += '<span class="tag muted">开票要会计/管理员</span>';
+                            }
+                            return html + '</div></div>';
+                        }).join('');
+                    }
+
+                    function renderShipList() {
+                        var box = document.getElementById('ship-list');
+                        if (!box) { return; }
+                        var list = (ordersData.groups || {}).ship || [];
+                        var counter = document.getElementById('ship-count');
+                        var total = (ordersData.counts || {}).ship || 0;
+                        if (counter) { counter.textContent = total ? total : ''; }
+                        if (!list.length) {
+                            shipPicked = {};
+                            box.innerHTML = '<div class="empty">没有待发货的工单</div>';
+                            updateShipButton();
+                            return;
+                        }
+                        // 已经不在待发货列表里的勾选要清掉（可能刚发完货）
+                        var alive = {};
+                        list.forEach(function (o) { alive[o.id] = true; });
+                        Object.keys(shipPicked).forEach(function (id) {
+                            if (!alive[id]) { delete shipPicked[id]; }
+                        });
+                        box.innerHTML = list.map(function (o) {
+                            var checked = shipPicked[o.id] ? ' checked="checked"' : '';
+                            return '<div class="order"><div class="info">' +
+                                '<label style="display:flex;gap:8px;align-items:flex-start;margin:0">' +
+                                '<input type="checkbox" data-ship-pick="' + o.id + '"' + checked +
+                                ' style="width:22px;height:22px;margin-top:2px;flex:none"/>' +
+                                '<span><b>' + esc(o.name) + '</b> ' + stateTag(o.state) + '<br/>' +
+                                esc(o.machine || '-') + (o.partner ? ' · ' + esc(o.partner) : '') +
+                                (o.warranty_pending
+                                    ? '<br/><span class="tag info">保修待发货起算</span>' : '') +
+                                '</span></label></div><div class="row">' +
+                                '<button class="btn small ghost" data-detail="' + o.id + '">详情</button>' +
+                                '</div></div>';
+                        }).join('');
+                        updateShipButton();
+                    }
+
+                    function updateShipButton() {
+                        var n = Object.keys(shipPicked).length;
+                        var btn = document.getElementById('btn-ship-open');
+                        if (btn) {
+                            btn.textContent = '合并发货（已选 ' + n + '）';
+                            btn.disabled = (n === 0);
+                        }
+                    }
+
+                    function openShipSheet() {
+                        var ids = Object.keys(shipPicked);
+                        if (!ids.length) { toast('先勾选要发货的工单'); return; }
+                        var list = ids.map(function (id) { return shipPicked[id]; });
+                        document.getElementById('ship-sel-list').innerHTML = list.map(function (o) {
+                            return '<div class="order">' + doneRowInfo(o) + '</div>';
+                        }).join('');
+                        shipPhotos = [];
+                        renderShipThumbs();
+                        document.getElementById('ship-tracking').value = '';
+                        document.getElementById('ship-carrier').value = '';
+                        document.getElementById('ship-sheet').style.display = 'block';
+                        document.getElementById('ship-hint').textContent = '';
+                        window.scrollTo(0, 0);
+                    }
+
+                    function renderShipThumbs() {
+                        var box = document.getElementById('ship-thumbs');
+                        if (!box) { return; }
+                        box.innerHTML = shipPhotos.length
+                            ? shipPhotos.map(function (src, index) {
+                                return '<div style="position:relative;margin:0 6px 6px 0">' +
+                                    '<img src="' + src + '" style="width:74px;height:74px;' +
+                                    'object-fit:cover;border-radius:8px;border:1px solid #e6dff2"/>' +
+                                    '<button class="btn small danger" data-shipphoto-del="' + index +
+                                    '" style="position:absolute;top:-6px;right:-6px;width:24px;height:24px;' +
+                                    'padding:0;border-radius:12px;font-size:12px;line-height:1">×</button>' +
+                                    '</div>';
+                            }).join('')
+                            : '<div class="empty">还没有照片（至少 1 张）</div>';
+                    }
+
+                    function addShipPhotos(files) {
+                        var list = Array.prototype.slice.call(files || []);
+                        if (!list.length) { return; }
+                        var left = list.length;
+                        list.forEach(function (file) {
+                            compressImage(file).then(function (dataUrl) {
+                                if (dataUrl) { shipPhotos.push(dataUrl); }
+                                left -= 1;
+                                if (left === 0) {
+                                    renderShipThumbs();
+                                    toast('已添加包装照片 ' + shipPhotos.length + ' 张');
+                                }
+                            });
+                        });
+                    }
+
+                    function submitShip() {
+                        var ids = Object.keys(shipPicked);
+                        if (!ids.length) { toast('先勾选要发货的工单'); return; }
+                        var tracking = document.getElementById('ship-tracking').value.trim();
+                        if (!tracking) { toast('请先扫或填快递单号'); return; }
+                        if (!shipPhotos.length) { toast('请先拍照上传包装照片（至少 1 张）'); return; }
+                        var btn = document.getElementById('btn-ship-confirm');
+                        btn.disabled = true;
+                        btn.textContent = '正在发货…';
+                        var fd = new FormData();
+                        fd.append('csrf_token', CSRF);
+                        fd.append('order_ids', ids.join(','));
+                        fd.append('tracking_no', tracking);
+                        var carrier = document.getElementById('ship-carrier').value.trim();
+                        if (carrier) { fd.append('carrier', carrier); }
+                        shipPhotos.forEach(function (dataUrl, index) {
+                            fd.append('photo', dataURLtoBlob(dataUrl), 'pack-' + (index + 1) + '.jpg');
+                        });
+                        fetch(BASE + '/ship_confirm', {
+                            method: 'POST', credentials: 'same-origin', body: fd
+                        }).then(function (r) { return r.json(); }).then(function (res) {
+                            btn.disabled = false;
+                            btn.textContent = '确定发货';
+                            if (!res.ok) { toast(res.error || '发货失败'); return; }
+                            toast('已发货：' + res.shipment + ' / 快递单号 ' + res.tracking_no +
+                                  '（' + res.count + ' 张工单）');
+                            shipPicked = {};
+                            shipPhotos = [];
+                            document.getElementById('ship-sheet').style.display = 'none';
+                            loadOrders();
+                        }).catch(function () {
+                            btn.disabled = false;
+                            btn.textContent = '确定发货';
+                            toast('网络不稳，发货没提交成功，请重试');
+                        });
+                    }
+
+                    function scanTracking() {
+                        if (NATIVE && NATIVE.scan) {
+                            scanMode = 'track';
+                            NATIVE.scan();
+                            return;
+                        }
+                        // 浏览器：临时借扫码页的摄像头，扫到后自动回到发货页
+                        scanMode = 'track';
+                        shipScanReturn = true;
+                        document.getElementById('ship-sheet').style.display = 'none';
+                        switchView('wo');
+                        switchTab('scan');
+                        startCamera('qr');
+                        toast('对准快递单条码…');
                     }
 
                     // ---------------- 新建二维码 ----------------
@@ -1033,6 +1350,13 @@
                         var pSel = document.getElementById('newqr-product');
                         if (!payload.machine_id && mSel && mSel.value) { payload.machine_id = mSel.value; }
                         if (!payload.product_id && pSel && pSel.value) { payload.product_id = pSel.value; }
+                        // 活期客户：带上「本次保修月数」（首次维修的保修从发货快递时间起算）
+                        if (currentQr && currentQr.customer_type === 'adhoc') {
+                            var monthsSel = document.getElementById('warranty-months');
+                            if (monthsSel && monthsSel.value) {
+                                payload.warranty_months = monthsSel.value;
+                            }
+                        }
                         // 两个分栏都有输入框，哪个有值用哪个（之前只读扫码页，导致生码建单填的不保存）
                         var pick = function (a, b) {
                             var ea = document.getElementById(a), eb = document.getElementById(b);
@@ -1429,6 +1753,78 @@
                     });
                     document.getElementById('btn-case-search').addEventListener('click', loadCases);
                     document.getElementById('btn-timeline-refresh').addEventListener('click', loadTimeline);
+
+                    // ---------------- 消息：开票 / 发货 ----------------
+                    document.getElementById('btn-invoice-refresh').addEventListener('click', loadOrders);
+                    document.getElementById('btn-ship-refresh').addEventListener('click', loadOrders);
+                    document.getElementById('btn-ship-all').addEventListener('click', function () {
+                        var list = (ordersData.groups || {}).ship || [];
+                        list.forEach(function (o) { shipPicked[o.id] = o; });
+                        renderShipList();
+                    });
+                    document.getElementById('btn-ship-none').addEventListener('click', function () {
+                        shipPicked = {};
+                        renderShipList();
+                    });
+                    document.getElementById('btn-ship-open').addEventListener('click', openShipSheet);
+                    document.getElementById('ship-close').addEventListener('click', function () {
+                        document.getElementById('ship-sheet').style.display = 'none';
+                    });
+                    document.getElementById('btn-ship-confirm').addEventListener('click', submitShip);
+                    document.getElementById('btn-ship-scan').addEventListener('click', scanTracking);
+                    document.getElementById('btn-ship-camera').addEventListener('click', function () {
+                        document.getElementById('ship-camera-input').click();
+                    });
+                    document.getElementById('btn-ship-album').addEventListener('click', function () {
+                        document.getElementById('ship-photo-input').click();
+                    });
+                    document.getElementById('btn-ship-paste').addEventListener('click', function () {
+                        var input = document.getElementById('ship-tracking');
+                        if (navigator.clipboard && navigator.clipboard.readText) {
+                            navigator.clipboard.readText().then(function (txt) {
+                                txt = (txt || '').trim();
+                                if (txt) { input.value = txt; toast('已粘贴快递单号'); }
+                                else { toast('剪贴板是空的'); }
+                            }).catch(function () {
+                                input.focus();
+                                toast('请长按输入框手动粘贴');
+                            });
+                        } else {
+                            input.focus();
+                            toast('请长按输入框手动粘贴');
+                        }
+                    });
+                    document.getElementById('ship-photo-input').addEventListener('change', function (ev) {
+                        addShipPhotos(ev.target.files);
+                        ev.target.value = '';
+                    });
+                    document.getElementById('ship-camera-input').addEventListener('change', function (ev) {
+                        addShipPhotos(ev.target.files);
+                        ev.target.value = '';
+                    });
+                    // 待发货工单勾选（列表是动态渲染的，用事件委托）
+                    document.addEventListener('change', function (ev) {
+                        var el = ev.target;
+                        if (!el || !el.getAttribute) { return; }
+                        var id = el.getAttribute('data-ship-pick');
+                        if (!id) { return; }
+                        var list = (ordersData.groups || {}).ship || [];
+                        var found = null;
+                        list.forEach(function (o) { if (String(o.id) === String(id)) { found = o; } });
+                        if (el.checked && found) { shipPicked[id] = found; }
+                        else { delete shipPicked[id]; }
+                        updateShipButton();
+                    });
+                    // 删除已拍好的包装照片
+                    document.addEventListener('click', function (ev) {
+                        var el = ev.target;
+                        if (!el || !el.getAttribute) { return; }
+                        var idx = el.getAttribute('data-shipphoto-del');
+                        if (idx !== null && idx !== undefined && idx !== '') {
+                            shipPhotos.splice(Number(idx), 1);
+                            renderShipThumbs();
+                        }
+                    });
                     document.getElementById('btn-logout').addEventListener('click', function () {
                         askConfirm('确认退出登录？', function () {
                             window.location.href = '/web/session/logout?redirect=/web/login';
@@ -1444,11 +1840,19 @@
                             (name === 'timeline') ? 'block' : 'none';
                         document.getElementById('msg-discuss').style.display =
                             (name === 'discuss') ? 'block' : 'none';
+                        document.getElementById('msg-invoice').style.display =
+                            (name === 'invoice') ? 'block' : 'none';
+                        document.getElementById('msg-ship').style.display =
+                            (name === 'ship') ? 'block' : 'none';
                         if (name === 'discuss') {
                             var frame = document.getElementById('discuss-frame');
                             if (frame && !frame.getAttribute('src')) {
                                 frame.setAttribute('src', '/odoo/discuss');
                             }
+                        }
+                        if (name === 'invoice' || name === 'ship') {
+                            // 这两个分栏看的是全厂待办，每次进来都拉一次最新数据
+                            loadOrders();
                         }
                     }
                     document.querySelectorAll('[data-msg-tab]').forEach(function (b) {
@@ -1501,21 +1905,27 @@
 
                     // ---------------- 自绘确认框（避免 WebView 原生 confirm 显示网址） ----------------
                     var confirmCallback = null;
+                    var confirmCancelCallback = null;
 
-                    function askConfirm(message, onOk) {
+                    function askConfirm(message, onOk, onCancel) {
                         confirmCallback = onOk || null;
+                        confirmCancelCallback = onCancel || null;
                         document.getElementById('confirm-text').textContent = message;
                         document.getElementById('confirm-mask').classList.add('show');
                     }
                     document.getElementById('confirm-ok').addEventListener('click', function () {
                         var cb = confirmCallback;
                         confirmCallback = null;
+                        confirmCancelCallback = null;
                         document.getElementById('confirm-mask').classList.remove('show');
                         if (cb) { cb(); }
                     });
                     document.getElementById('confirm-cancel').addEventListener('click', function () {
+                        var cb = confirmCancelCallback;
                         confirmCallback = null;
+                        confirmCancelCallback = null;
                         document.getElementById('confirm-mask').classList.remove('show');
+                        if (cb) { cb(); }
                     });
 
                     // ---------------- 加载遮罩 ----------------
@@ -1526,6 +1936,45 @@
                     function hideLoading() {
                         document.getElementById('loading-mask').classList.remove('show');
                     }
+
+                    // ---------------- 圆环进度（上传 / 转发下载共用） ----------------
+                    // 圆周长 = 2πr = 2 × 3.14159 × 38 ≈ 238.76，用 stroke-dashoffset 控制显示比例
+                    var PROGRESS_CIRCUM = 238.76;
+
+                    function showProgress(title) {
+                        setProgress(0, title || '');
+                        document.getElementById('progress-mask').classList.add('show');
+                    }
+                    function setProgress(percent, hint) {
+                        var pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+                        var ring = document.getElementById('progress-ring');
+                        if (ring) {
+                            ring.style.strokeDashoffset = String(PROGRESS_CIRCUM * (1 - pct / 100));
+                        }
+                        var text = document.getElementById('progress-text');
+                        if (text) { text.textContent = pct + '%'; }
+                        var hintEl = document.getElementById('progress-hint');
+                        if (hintEl && hint !== undefined && hint !== null) { hintEl.textContent = hint; }
+                    }
+                    function hideProgress() {
+                        document.getElementById('progress-mask').classList.remove('show');
+                    }
+                    function fmtBytes(n) {
+                        n = Number(n) || 0;
+                        if (n >= 1024 * 1024) { return (n / 1024 / 1024).toFixed(1) + ' MB'; }
+                        if (n >= 1024) { return Math.round(n / 1024) + ' KB'; }
+                        return n + ' B';
+                    }
+                    // App 原生下载（转发前）的进度回调；-1 表示拿不到总大小
+                    window.onNativeShareProgress = function (pct) {
+                        if (pct === undefined || pct === null) { return; }
+                        if (pct < 0) {
+                            var hint = document.getElementById('progress-hint');
+                            if (hint) { hint.textContent = '正在下载视频到手机…'; }
+                            return;
+                        }
+                        setProgress(pct, '正在下载视频到手机…');
+                    };
 
                     // ---------------- 工单详情 ----------------
                     var detailOrder = null;
@@ -1620,7 +2069,7 @@
                         if (navigator.connection && navigator.connection.saveData) { return; }
                         (o.videos || []).forEach(function (v) {
                             if (!v || !v.id || shareFiles[v.id] || sharePending[v.id]) { return; }
-                            if (v.size && v.size > 30 * 1024 * 1024) { return; }
+                            if (v.size && v.size > 80 * 1024 * 1024) { return; }
                             sharePending[v.id] = fetch(BASE + '/video/' + v.id,
                                                        {credentials: 'same-origin'})
                                 .then(function (r) {
@@ -1687,12 +2136,19 @@
                         box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:76px;' +
                             'z-index:120;box-shadow:0 10px 30px rgba(40,20,70,.35)';
                         box.innerHTML =
-                            '<h2>分享这段视频</h2>' +
-                            '<div class="hint">这个浏览器没有系统分享面板，用下面的方式发出去：</div>' +
-                            '<input type="text" id="share-url" readonly value="' + escAttr(url) + '"/>' +
+                            '<h2>转发这段视频</h2>' +
+                            '<div class="hint">这个浏览器不支持系统转发面板（微信/QQ 内置浏览器都不支持）。' +
+                            '请先<b>下载视频</b>，再打开微信/QQ，在聊天里选「相册 → 刚下载的视频」发出去。</div>' +
                             '<div class="row" style="margin-top:10px">' +
-                            '<button class="btn small" id="share-copy" style="flex:1;margin:0">复制链接</button>' +
-                            '<button class="btn small ghost" id="share-open" style="flex:1;margin:0">打开视频</button>' +
+                            '<a class="btn small ok" id="share-download" style="flex:1;margin:0" ' +
+                            'href="' + escAttr(url) + '" download="' + escAttr(video.name || 'video.mp4') +
+                            '">下载视频</a>' +
+                            '<button class="btn small ghost" id="share-copy" style="flex:1;margin:0">复制链接</button>' +
+                            '</div>' +
+                            '<input type="text" id="share-url" readonly value="' + escAttr(url) +
+                            '" style="margin-top:8px"/>' +
+                            '<div class="row" style="margin-top:8px">' +
+                            '<button class="btn small ghost" id="share-open" style="flex:1;margin:0">播放视频</button>' +
                             '<button class="btn small ghost" id="share-close" style="flex:1;margin:0">关闭</button>' +
                             '</div>';
                         document.body.appendChild(box);
@@ -1701,6 +2157,10 @@
                         };
                         document.getElementById('share-open').onclick = function () {
                             window.open(url, '_blank');
+                        };
+                        document.getElementById('share-download').onclick = function () {
+                            // App 里 <a download> 走原生下载器；浏览器里就是普通下载
+                            toast('开始下载视频，下载完去微信/QQ 里选择它发送');
                         };
                         document.getElementById('share-copy').onclick = function () {
                             copyText(url).then(function () {
@@ -1719,26 +2179,63 @@
                         var url = absoluteUrl(video.url);
                         var name = video.name || 'video.mp4';
                         var file = shareFiles[videoId];
-                        if (navigator.share) {
-                            var data = {title: name, text: '维修视频：' + name, url: url};
-                            if (file && (!navigator.canShare || navigator.canShare({files: [file]}))) {
-                                data = {files: [file], title: name};
+
+                        // 1) App 内：交给原生下载 + 系统「分享/转发」面板（微信、QQ 都在列表里），
+                        //    转发的是视频文件本身，不是链接。
+                        if (NATIVE && NATIVE.shareVideo) {
+                            showProgress('正在下载视频…');
+                            setProgress(0, '正在准备视频…');
+                            // 兜底：万一原生回调没回来，3 分钟后自己收掉进度环
+                            clearTimeout(window.__shareWatch);
+                            window.__shareWatch = setTimeout(function () {
+                                hideProgress();
+                                toast('准备超时，请检查网络后重试', 5000);
+                            }, 180000);
+                            try {
+                                NATIVE.shareVideo(url, name);
+                            } catch (e) {
+                                hideProgress();
+                                toast('原生转发调用失败，改用浏览器分享');
                             }
+                            return;
+                        }
+
+                        // 2) 浏览器：Web Share Level 2 可以直接把文件交给系统分享面板
+                        if (navigator.share) {
+                            var hasFile = !!(file && (!navigator.canShare || navigator.canShare({files: [file]})));
+                            var data = hasFile
+                                ? {files: [file], title: name}
+                                : {title: name, text: '维修视频：' + name, url: url};
                             try {
                                 navigator.share(data).then(function () {
-                                    toast('已打开系统分享');
+                                    toast(hasFile ? '已打开系统转发面板' : '已打开系统分享（链接）');
                                 }).catch(function (err) {
                                     if (err && err.name === 'AbortError') { return; }   // 用户自己取消
-                                    toast('分享失败：' + ((err && err.name) || '未知错误') + '，可改用「下载」');
+                                    // 文件分享失败（大小/类型不支持）时退回链接分享再试一次
+                                    if (hasFile) {
+                                        navigator.share({title: name, text: '维修视频：' + name, url: url})
+                                            .catch(function () { showShareFallback(video, url); });
+                                        return;
+                                    }
+                                    toast('分享失败：' + ((err && err.name) || '未知错误'));
                                     showShareFallback(video, url);
                                 });
                                 return;
                             } catch (e) {
-                                toast('系统分享调用失败，改为复制链接');
+                                toast('系统分享调用失败，改为下载后转发');
                             }
                         }
                         showShareFallback(video, url);
                     }
+
+                    // App 原生转发结果回调（Java 里下载完/失败都会调一次）
+                    window.onNativeShare = function (ok, message) {
+                        clearTimeout(window.__shareWatch);
+                        hideProgress();
+                        hideLoading();
+                        if (ok) { toast(message || '已打开转发面板，选微信 / QQ 即可', 5000); }
+                        else { toast('转发失败：' + (message || '未知原因'), 6000); }
+                    };
 
                     function renderDetail(o) {
                         document.getElementById('d-title').textContent = o.name + ' · ' + o.state;
@@ -1762,7 +2259,7 @@
                                 '<a class="btn small ghost" href="' + escAttr(v.url) + '" download="' +
                                 escAttr(v.name) + '" style="margin-right:6px">下载</a>' +
                                 '<button class="btn small ghost" data-sharevideo="' + v.id +
-                                '" style="margin:0 6px 0 0">分享</button>' +
+                                '" style="margin:0 6px 0 0">转发</button>' +
                                 '<button class="btn small ghost" data-delvideo="' + v.id +
                                 '" style="margin:0">删除</button></span></div></div>';
                         }).join('') || '<div class="empty">还没有视频（完工前必须上传至少 1 段）</div>';
@@ -1822,7 +2319,14 @@
 
                         html += '<div class="card"><h2>维修视频（最多 3 段，每段 ≤5 分钟）</h2>' +
                                 videos +
-                                '<button class="btn ghost" id="btn-video" style="margin-top:8px">拍摄/上传视频</button>' +
+                                '<div class="row" style="margin-top:8px">' +
+                                '<button class="btn small" id="btn-video-record" style="margin:0">录制视频</button>' +
+                                '<button class="btn small ghost" id="btn-video-upload" style="margin:0">' +
+                                '从相册 / 文件上传</button>' +
+                                '</div>' +
+                                '<div class="hint" style="margin-top:6px">' +
+                                '「录制」直接用相机拍；「从相册 / 文件上传」选手机里已有的视频（可一次选多段）。' +
+                                '</div>' +
                                 '</div>';
 
                         var req = o.requirements || {};
@@ -1840,6 +2344,43 @@
                             (req.measures_done ? '<span class="tag info">已完成 ' + req.measures_done + ' 项</span>'
                                                : '<span class="tag warn">未开始</span>') + '</div>' +
                             '</div>';
+
+                        // 发货 + 保修：已发货的工单能查到快递单号和包装照片
+                        var ship = o.shipment;
+                        html += '<div class="card" style="margin-top:12px"><h2>发货</h2>';
+                        if (ship) {
+                            html += kv('发货单', ship.name);
+                            html += kv('快递单号', ship.tracking_no);
+                            html += kv('快递公司', ship.carrier);
+                            html += kv('发货时间', ship.ship_date);
+                            var shipPhotosHtml = (ship.photos || []).map(function (p) {
+                                var url = window.location.origin + p.url;
+                                return '<div style="margin:0 8px 8px 0;text-align:center">' +
+                                    '<img src="' + url + '" data-photo-view="' + url +
+                                    '" style="width:74px;height:74px;object-fit:cover;cursor:zoom-in;' +
+                                    'border-radius:8px;border:1px solid #e6dff2"/>' +
+                                    '<div style="font-size:11px"><a href="' + url +
+                                    '" download="包装照片.jpg">下载</a></div></div>';
+                            }).join('') || '<div class="empty">没有包装照片</div>';
+                            html += '<div class="thumbs" style="display:flex;flex-wrap:wrap">' +
+                                shipPhotosHtml + '</div>';
+                        } else if (o.done) {
+                            html += '<div class="warnbox" style="margin:0">这张工单<b>还没有发货</b>。' +
+                                '请管理员扫快递单号、拍包装照片后点「确定发货」。</div>' +
+                                '<button class="btn ok" data-shipfromdetail="' + o.id +
+                                '" style="margin-top:10px">去发货</button>';
+                        } else {
+                            html += '<div class="hint">工单完工后才能发货。</div>';
+                        }
+                        if (o.warranty_pending) {
+                            html += '<div class="hint" style="margin-top:8px;color:#8a5b00">' +
+                                '活期客户 + 首次维修：保修从<b>发货快递时间</b>起算（' +
+                                (o.warranty_months || 12) + ' 个月）。</div>';
+                        } else if (o.warranty_months) {
+                            html += '<div class="hint" style="margin-top:8px">本次保修：' +
+                                o.warranty_months + ' 个月。</div>';
+                        }
+                        html += '</div>';
 
                         var canComplete = o.can_complete;
                         html += '<div class="hint" style="margin:6px 0">当前状态：' + esc(o.state) + '</div>';
@@ -1889,8 +2430,20 @@
                         if (el.getAttribute('data-measure') || el.getAttribute('data-savework') ||
                             el.getAttribute('data-fixboard') || el.getAttribute('data-sharevideo') ||
                             el.getAttribute('data-delvideo') || el.getAttribute('data-complete') ||
+                            el.getAttribute('data-shipfromdetail') ||
                             el.id === 'btn-video') {
                             ev.stopPropagation();
+                        }
+                        if ((v = el.getAttribute('data-shipfromdetail'))) {
+                            if (!detailOrder) { return; }
+                            shipPicked = {};
+                            shipPicked[detailOrder.id] = {
+                                id: detailOrder.id, name: detailOrder.name,
+                                state: detailOrder.state, state_key: 'done',
+                                machine: detailOrder.machine, partner: detailOrder.partner
+                            };
+                            openShipSheet();
+                            return;
                         }
                         if ((v = el.getAttribute('data-measure'))) {
                             var label = ({resistance: '电阻', voltage: '电压',
@@ -1981,39 +2534,246 @@
                     document.getElementById('order-detail').addEventListener('click', function (ev) {
                         var el = ev.target;
                         if (!el) { return; }
-                        if (el.id === 'btn-video' || (el.parentNode && el.parentNode.id === 'btn-video')) {
+                        var id = el.id || (el.parentNode && el.parentNode.id);
+                        if (id === 'btn-video-record') {
+                            // 录制：带 capture 的 input，手机直接开相机
+                            document.getElementById('video-record-input').click();
+                        } else if (id === 'btn-video-upload' || id === 'btn-video') {
+                            // 从相册 / 文件上传：不带 capture，可多选
                             document.getElementById('video-input').click();
                         }
                     });
 
-                    document.getElementById('video-input').addEventListener('change', function (ev) {
-                        var file = ev.target.files && ev.target.files[0];
-                        ev.target.value = '';
-                        if (!file || !detailOrder) { return; }
-                        var url = URL.createObjectURL(file);
-                        var probe = document.createElement('video');
-                        probe.preload = 'metadata';
-                        probe.onloadedmetadata = function () {
-                            var dur = Math.round(probe.duration || 0);
-                            URL.revokeObjectURL(url);
-                            if (!dur) { toast('读不到视频时长，请换一个格式'); return; }
-                            if (dur > 300) { toast('视频 ' + dur + ' 秒，超过 5 分钟，请重新拍摄'); return; }
-                            var fd = new FormData();
-                            fd.append('csrf_token', CSRF);
-                            fd.append('order_id', detailOrder.id);
-                            fd.append('duration', dur);
-                            fd.append('video', file, file.name || 'repair.mp4');
-                            toast('上传中…');
-                            fetch(BASE + '/upload_video', {method: 'POST', credentials: 'same-origin', body: fd})
-                                .then(function (r) { return r.json(); })
-                                .then(function (res) {
-                                    if (!res.ok) { toast(res.error || '上传失败'); return; }
-                                    toast('视频已上传（第 ' + res.count + ' 段）');
-                                    openOrder(detailOrder.id);
-                                }).catch(function () { toast('网络不稳，视频上传失败'); });
+                    // 单个视频：先读时长（≤5 分钟），再用 XHR 上传（能拿到上传进度）
+                    function uploadVideoFile(file, label) {
+                        return new Promise(function (resolve) {
+                            if (!file || !detailOrder) { resolve(false); return; }
+                            var url = URL.createObjectURL(file);
+                            var probe = document.createElement('video');
+                            probe.preload = 'metadata';
+                            probe.onloadedmetadata = function () {
+                                var dur = Math.round(probe.duration || 0);
+                                URL.revokeObjectURL(url);
+                                if (!dur) {
+                                    hideProgress();
+                                    toast('读不到视频时长，请换一个格式');
+                                    resolve(false);
+                                    return;
+                                }
+                                if (dur > 300) {
+                                    hideProgress();
+                                    toast('视频 ' + dur + ' 秒，超过 5 分钟，请换一段');
+                                    resolve(false);
+                                    return;
+                                }
+                                var fd = new FormData();
+                                fd.append('csrf_token', CSRF);
+                                fd.append('order_id', detailOrder.id);
+                                fd.append('duration', dur);
+                                fd.append('video', file, file.name || 'repair.mp4');
+
+                                var xhr = new XMLHttpRequest();
+                                xhr.open('POST', BASE + '/upload_video');
+                                xhr.withCredentials = true;
+                                xhr.timeout = 15 * 60 * 1000;
+                                xhr.upload.onprogress = function (ev) {
+                                    if (!ev.lengthComputable) {
+                                        setProgress(0, (label || '') + ' 上传中…');
+                                        return;
+                                    }
+                                    setProgress(ev.loaded / ev.total * 100,
+                                        (label ? label + ' · ' : '') +
+                                        fmtBytes(ev.loaded) + ' / ' + fmtBytes(ev.total));
+                                };
+                                xhr.onload = function () {
+                                    var res = null;
+                                    try { res = JSON.parse(xhr.responseText || '{}'); } catch (e) { res = null; }
+                                    if (!res || !res.ok) {
+                                        hideProgress();
+                                        toast((res && res.error) ||
+                                              ('上传失败（HTTP ' + xhr.status + '）'), 6000);
+                                        resolve(false);
+                                        return;
+                                    }
+                                    setProgress(100, (label ? label + ' · ' : '') + '已上传');
+                                    resolve(true);
+                                };
+                                xhr.onerror = function () {
+                                    hideProgress();
+                                    toast('网络不稳，视频上传失败，请重试', 6000);
+                                    resolve(false);
+                                };
+                                xhr.ontimeout = function () {
+                                    hideProgress();
+                                    toast('上传超时，请检查网络后重试', 6000);
+                                    resolve(false);
+                                };
+                                xhr.send(fd);
+                            };
+                            probe.onerror = function () {
+                                hideProgress();
+                                toast('这个视频格式读不出时长');
+                                resolve(false);
+                            };
+                            probe.src = url;
+                        });
+                    }
+
+                    // 一次可以选多段：逐段上传，全部传完再刷新详情
+                    function uploadVideoFiles(files) {
+                        var list = Array.prototype.slice.call(files || []);
+                        if (!list.length) {
+                            toast('没有选到视频（可能取消了选择）');
+                            return;
+                        }
+                        if (!detailOrder) {
+                            toast('请先打开工单详情再上传视频');
+                            return;
+                        }
+                        var exist = (detailOrder.videos || []).length;
+                        if (exist >= 3) {
+                            toast('最多只能上传 3 段视频，请先删除');
+                            return;
+                        }
+                        var room = 3 - exist;
+                        if (list.length > room) {
+                            toast('最多还能传 ' + room + ' 段，多选的部分会跳过');
+                            list = list.slice(0, room);
+                        }
+                        var index = 0;
+                        var okCount = 0;
+                        var failed = 0;
+                        showProgress('准备上传…');
+                        var next = function () {
+                            if (index >= list.length) {
+                                hideProgress();
+                                if (okCount) { toast('已上传 ' + okCount + ' 段视频'); }
+                                if (failed) { toast(failed + ' 段没有传上去，可重试', 6000); }
+                                // 不管成没成，都刷新一次：成功的要显示出来，失败的也能看到当前状态
+                                openOrder(detailOrder.id);
+                                return;
+                            }
+                            index += 1;
+                            var label = '第 ' + index + '/' + list.length + ' 段';
+                            setProgress(0, label + ' 上传中…');
+                            uploadVideoFile(list[index - 1], label).then(function (ok) {
+                                if (ok) { okCount += 1; } else { failed += 1; }
+                                next();
+                            });
                         };
-                        probe.onerror = function () { toast('这个视频格式读不出时长'); };
-                        probe.src = url;
+                        next();
+                    }
+
+                    function onVideoPicked(ev) {
+                        // 必须先把 FileList 复制成数组，再清空 input：
+                        // 有些 WebView 清空 value 会把同一个 FileList 也清掉，
+                        // 结果拿到空列表 -> 上传函数直接 return，界面什么都不提示。
+                        var files = Array.prototype.slice.call(ev.target.files || []);
+                        ev.target.value = '';
+                        uploadVideoFiles(files);
+                    }
+                    document.getElementById('video-input').addEventListener('change', onVideoPicked);
+                    document.getElementById('video-record-input').addEventListener('change', onVideoPicked);
+
+                    // ---------------- 位置自动上报（无界面） ----------------
+                    // 所有手机端用户（含管理员）打开页面/App 即自动上报，不需要手动点。
+                    // 手机只负责把坐标交给服务端；是否在岗由服务端按工作位置判定。
+                    // 没有分配工作位置也照常上报（服务端记为「未分配」）。
+                    // 网页/PWA 只有前台定位；Android App 由原生前台服务负责，网页 JS 不再重复上报。
+                    var LOC = {
+                        interval: 60, minDist: 30,
+                        watchId: null, lastSent: 0, lastLat: null, lastLng: null,
+                        busy: false, retryTimer: null
+                    };
+
+                    function locDistance(lat1, lng1, lat2, lng2) {
+                        var rad = Math.PI / 180, dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+                        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                            + Math.cos(lat1 * rad) * Math.cos(lat2 * rad)
+                            * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                        return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a)));
+                    }
+                    function locSend(coords) {
+                        if (!coords || LOC.busy) { return; }
+                        LOC.busy = true;
+                        post('/location', {
+                            lat: coords.latitude,
+                            lng: coords.longitude,
+                            accuracy: coords.accuracy || 0,
+                            src: NATIVE ? 'android' : 'pwa'
+                        }).then(function (res) {
+                            LOC.busy = false;
+                            if (!res || !res.ok) { return; }
+                            if (res.tracking === false) {
+                                if (LOC.watchId !== null) {
+                                    navigator.geolocation.clearWatch(LOC.watchId);
+                                    LOC.watchId = null;
+                                }
+                                return;
+                            }
+                            LOC.lastSent = Date.now();
+                            LOC.lastLat = coords.latitude;
+                            LOC.lastLng = coords.longitude;
+                        }).catch(function () { LOC.busy = false; });
+                    }
+                    function locOnFix(pos) {
+                        var c = pos.coords;
+                        var moved = (LOC.lastLat === null) ? Infinity
+                            : locDistance(LOC.lastLat, LOC.lastLng, c.latitude, c.longitude);
+                        if (LOC.lastLat === null
+                            || Date.now() - LOC.lastSent >= LOC.interval * 1000
+                            || moved >= LOC.minDist) {
+                            locSend(c);
+                        }
+                    }
+                    function locStart() {
+                        if (!navigator.geolocation || LOC.watchId !== null) { return; }
+                        LOC.watchId = navigator.geolocation.watchPosition(locOnFix, function () { }, {
+                            enableHighAccuracy: true, maximumAge: 30000, timeout: 30000
+                        });
+                    }
+                    function locRetry() {
+                        if (LOC.retryTimer) { return; }
+                        LOC.retryTimer = setTimeout(function () {
+                            LOC.retryTimer = null;
+                            locInit();
+                        }, 60000);
+                    }
+                    function locInit() {
+                        // Android App v1.13+：原生前台服务已经负责定位，网页不要再开一份，
+                        // 否则 App 在前台时会出现两条上报。
+                        try {
+                            if (NATIVE && typeof NATIVE.nativeLocation === 'function'
+                                && NATIVE.nativeLocation()) {
+                                return;
+                            }
+                        } catch (e) { }
+                        if (!navigator.geolocation || window.isSecureContext === false) { return; }
+                        post('/location/state', {}).then(function (res) {
+                            if (LOC.retryTimer) {
+                                clearTimeout(LOC.retryTimer);
+                                LOC.retryTimer = null;
+                            }
+                            if (!res || !res.ok) { locRetry(); return; }
+                            LOC.interval = Math.max(15, Number(res.interval) || 60);
+                            LOC.minDist = Math.max(5, Number(res.min_distance) || 30);
+                            if (res.tracking === false) { return; }
+                            locStart();
+                        }).catch(locRetry);
+                    }
+                    document.addEventListener('visibilitychange', function () {
+                        if (document.hidden || LOC.watchId === null) { return; }
+                        if (Date.now() - LOC.lastSent < LOC.interval * 1000) { return; }
+                        navigator.geolocation.getCurrentPosition(function (pos) {
+                            locSend(pos.coords);
+                        }, function () { }, {enableHighAccuracy: true, timeout: 20000, maximumAge: 30000});
+                    });
+                    window.addEventListener('online', function () {
+                        if (LOC.watchId === null) { locInit(); return; }
+                        if (Date.now() - LOC.lastSent < 60000) { return; }
+                        navigator.geolocation.getCurrentPosition(function (pos) {
+                            locSend(pos.coords);
+                        }, function () { }, {enableHighAccuracy: true, timeout: 20000, maximumAge: 30000});
                     });
 
                     // 兜底：任何初始化异常都不应阻止页面可用
@@ -2021,6 +2781,11 @@
                         updateBadge();
                         loadOrders();
                         flushQueue();
+                    } catch (e) {
+                        if (window.console) { console.error(e); }
+                    }
+                    try {
+                        locInit();
                     } catch (e) {
                         if (window.console) { console.error(e); }
                     }
