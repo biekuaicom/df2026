@@ -86,7 +86,8 @@ class MachineMonthlyBillingWizard(models.TransientModel):
         self.ensure_one()
         month_first, month_last = self._month_bounds()
         total_days = (month_last - month_first).days + 1
-        domain = [('monthly_active', '=', True), ('monthly_fee', '>', 0)]
+        domain = [('monthly_active', '=', True), ('monthly_fee', '>', 0),
+                  ('partner_id.customer_type', '!=', 'adhoc')]
         if self.partner_ids:
             domain.append(('partner_id', 'in', self.partner_ids.ids))
         rows = []
