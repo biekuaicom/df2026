@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- 发货单号：FH + 年份 + 序号 -->
+        <record id="seq_machine_repair_shipment" model="ir.sequence">
+            <field name="name">维修发货单</field>
+            <field name="code">machine.repair.shipment</field>
+            <field name="prefix">FH%(year)s-</field>
+            <field name="padding">4</field>
+            <field name="company_id" eval="False"/>
+        </record>
+    </data>
+</odoo>
