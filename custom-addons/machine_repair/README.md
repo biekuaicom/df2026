@@ -872,22 +872,49 @@ Android App 的 `onShowFileChooser` 更彻底 —— 只要 accept 是 video 就
 * 历史固定名 `机台维修App-最新版.apk` 也自动归档，不再生成；
 * 内部分发目录 `mobile-android\dist\jiTaiWeiXiu-<版本>.apk` 保持不变。
 
-### 11. 相册视频「选了没反应」加固（2026-10-24，页面 v40）
+### 11. 相册视频「选了没反应」真正原因：App 内 `multiple`（2026-10-24，页面 v43）
 
-**症状**：录制视频上传正常；从相册选视频后既不提示成功也不提示失败。录制能成，
-说明 `input.click()` / `display:none` 这条链路本身没问题（两个入口用的是同一套），
-所以问题只可能出在**录制之外的差异**上。逐条排查后确认三个真实缺口：
+**症状**：录制视频上传正常；从相册选好后点「添加」，界面回到工单详情，既不提示成功也不提示失败。
 
-| 缺口 | 后果 | 现在怎么兜 |
-|---|---|---|
-| `<video>` 读时长时，容器/编码 WebView 不认（iPhone 的 .mov-HEVC、微信存的 mkv），`onloadedmetadata` 和 `onerror` **都不触发** | `new Promise` 永远不 settle，`next()` 卡死 → 进度环停在 0%，界面毫无反应 | 加 `VIDEO_PROBE_MS = 15s` 兜底超时，超时按「读不出时长」失败提示 |
-| 相册里的视频常是几百 MB，直接塞进 `FormData` | 手机内存被顶爆、线程静默挂起 | 前端先按体积拦截：>200MB 直接拒（与服务端一致），>100MB 给警告 |
-| 公网走 **Cloudflare 隧道**，免费版请求体上限 **100MB**，超了返回 HTML 413 | Odoo 的 200MB 上限根本用不到；`JSON.parse` 失败后只剩一句无信息量的 HTTP 提示 | `xhr.onload` 区分 413 / 401 / 403 / 状态 0，给出「被网关挡下、请压缩」等明确文案，并补 `onabort` |
+**排查过程**（记录一下，避免以后再走弯路）：
 
-**另外**：`done()` 统一收尾（`settled` 保证 Promise 只结算一次、清超时、`revokeObjectURL`），
-并去掉函数内零散的 `hideProgress()` —— 进度环改由 `uploadVideoFiles()` 在整批结束后统一关闭，
-这样多段上传中途失败不会把进度环提前关掉。`#toast` 的 `z-index` 是 300、进度环是 110，
-提示不会被盖住。
+* 录制和相册用的是**同一套** `display:none` + `input.click()` + `onVideoPicked`，录制能成 →
+  点击链路、`change` 绑定本身没问题；
+* Service Worker 不背锅：`sw.js` 的 fetch 处理第一行就是
+  `if (req.method !== 'GET') { return; }`，POST 完全不经过它；
+* `odoo.log` 的 HTTP 访问行显示：打开工单（`order_detail` 200）之后**没有任何 `upload_video` 请求**，
+  也**没有新的 `GET /machine_repair/mobile`** —— 请求没离开手机，页面也没重载（渲染进程崩溃、
+  Activity 重建都可以排除）；
+* 请求码 `1001–1006` 无冲突，Manifest 无 `launchMode` 干扰。
 
-**部署**：这是服务端渲染的页面，**不需要重新打包 APK**；但要 `-u machine_repair` 升级模块，
-视图才会从 XML 重新写进 `ir_ui_view`（改文件本身不会自动生效）。
+**定位手段**：临时加了一个 `/machine_repair/mobile/diag` 埋点路由 + 前端各阶段打点（`MRDIAG`），
+手机复现一次后日志里只有：
+
+```
+stage=click-album extra=native=yes multiple=true     ← 点击和选择器都正常
+                                                     ← 但完全没有 change
+```
+
+**根因**：`<input type="file" multiple>`。Android WebView 的 `onShowFileChooser` 拿到的是带
+`EXTRA_ALLOW_MULTIPLE` 的 `createIntent()`，部分 ROM 的选择器在用户点「添加」后回传
+`RESULT_CANCELED` 或空结果，WebView 干脆**不派发 `change`** —— 于是后续探测、上传、`toast`
+全都不执行，表现为「既不报错也不成功」。
+
+**修复**：App 内（`window.AndroidScanner` 存在时）在页面加载后移除 `video-input` 的 `multiple`，
+走和「录制视频」完全相同的单选回传路径；浏览器 / PWA 保留多选（那边没问题）。
+单选后选择器按钮从「添加」变成「确定」，实测上传、缩略图、播放全部正常。
+
+**顺带保留的加固**（与本次根因无关，但确实是真问题）：
+`VIDEO_PROBE_MS = 15s` 兜底超时（容器/编码不被识别时 `<video>` 两个事件都不触发，Promise 永不
+settle）、前端体积拦截（>200MB 拒、>100MB 警告，因为公网走 Cloudflare 隧道实际只有 100MB）、
+`xhr.onload` 区分 413/401/403/0、补 `onabort`。
+
+**版本兼容（重要）**：
+
+| 客户端 | 是否需要重装 APK |
+|---|---|
+| App **v1.14 / v1.15** | **不需要**。修复在服务端页面，App 关掉重开即可生效（页面版本 v43） |
+| App **≤ v1.13**（含 v1.12） | **必须重装 v1.15**。这些版本的 `onShowFileChooser` 不看 `isCaptureEnabled()`，只要 accept 是 video 就强行改成录制，点「从相册」会直接开相机。已核对 APK 字节码：v1.12 里没有 `isCaptureEnabled`，v1.15 里有 |
+
+**部署**：页面是服务端渲染，改完要 `-u machine_repair` 升级模块，视图才会从 XML 重新写进
+`ir_ui_view`（改文件本身不会自动生效）。
