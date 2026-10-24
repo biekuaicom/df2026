@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ 整列设置向导 ============
+         器件基线里计费方式 / 另计单价 / 保修月数一键刷到所有行，
+         刷完仍然可以逐行微调（个别板件价格不同照样能改）。 -->
+    <record id="view_machine_billing_column_wizard_form" model="ir.ui.view">
+        <field name="name">machine.billing.column.wizard.form</field>
+        <field name="model">machine.billing.column.wizard</field>
+        <field name="arch" type="xml">
+            <form string="整列设置器件基线">
+                <group>
+                    <group>
+                        <field name="machine_id"/>
+                        <field name="line_count"/>
+                        <field name="is_adhoc" invisible="1"/>
+                    </group>
+                </group>
+                <div class="text-muted mb-2">
+                    勾选要设置的项目，点「应用到全部行」后，下面所有器件行都会变成一样的值；
+                    设置完仍然可以单独修改某一行的内容（比如个别板件价格不同）。
+                </div>
+                <div class="alert alert-warning" invisible="not is_adhoc" role="alert">
+                    这台机台的客户是<b>活期用户</b>：没有包月，器件一律按「另计费」。
+                </div>
+                <group string="整列设置">
+                    <group>
+                        <field name="set_billing_type"/>
+                        <field name="billing_type" readonly="not set_billing_type or is_adhoc"/>
+                    </group>
+                    <group>
+                        <field name="set_extra_price"/>
+                        <field name="extra_price" readonly="not set_extra_price"/>
+                    </group>
+                    <group>
+                        <field name="set_warranty"/>
+                        <field name="warranty_months" readonly="not set_warranty"/>
+                    </group>
+                </group>
+                <footer>
+                    <button name="action_apply" type="object" string="应用到全部行" class="btn-primary"/>
+                    <button special="cancel" string="取消" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_machine_billing_column" model="ir.actions.act_window">
+        <field name="name">整列设置器件基线</field>
+        <field name="res_model">machine.billing.column.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>
