@@ -1,15 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.odoo.machinerepair"
-    android:versionCode="10"
-    android:versionName="1.9">
+    android:versionCode="16"
+    android:versionName="1.15">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 位置：手机端上报「是否在工作位置」用；前台服务保证关闭 App 后仍能上报 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
         android:label="@string/app_name"
@@ -38,6 +48,13 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
+        <!-- 视频转发用：把缓存里的视频以 content:// 临时授权给微信/QQ（不依赖 androidx） -->
+        <provider
+            android:name=".ShareFileProvider"
+            android:authorities="com.odoo.machinerepair.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <!-- 原生扫码页：原生相机 + ZXing 本地解码（不依赖 WebView 的 getUserMedia） -->
         <activity
             android:name=".ScanActivity"
@@ -45,5 +62,23 @@
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <!-- 后台上报位置：前台服务 + 常驻通知；关掉 App/锁屏后继续拿 GPS -->
+        <service
+            android:name=".LocationService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="location" />
+
+        <!-- 开机/升级后尝试恢复后台上报（部分系统会拒绝，App 打开时仍会启动） -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
