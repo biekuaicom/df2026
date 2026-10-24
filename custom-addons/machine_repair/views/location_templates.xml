@@ -1,0 +1,577 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 管理员专用：位置看板。独立轻量页（不经过 Odoo 前端框架），
+         手机上也能直接打开；数据接口在 controllers/mobile.py，
+         服务端先校验「位置监控管理员」组，非管理员连数据都拿不到。 -->
+    <template id="location_dashboard" name="位置看板（管理员）">
+        <html lang="zh-CN">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+                <title>位置看板 · 机台维修</title>
+                <meta name="theme-color" content="#5B3A8F"/>
+                <link rel="icon" href="/machine_repair/static/src/img/app-192.png?v=4"/>
+                <style>
+                    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+                    body { margin: 0; background: #f4f2f8; color: #24202c;
+                           font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+                    header { background: linear-gradient(135deg, #4c2f7c, #7450b0); color: #fff;
+                             padding: 14px 16px; position: sticky; top: 0; z-index: 20; }
+                    header .bar { max-width: 1120px; margin: 0 auto; display: flex;
+                                  align-items: center; gap: 10px; flex-wrap: wrap; }
+                    header h1 { margin: 0; font-size: 18px; font-weight: 700; flex: 1; min-width: 150px; }
+                    header .sub { font-size: 12px; opacity: .85; width: 100%; }
+                    .btn { border: 0; border-radius: 10px; padding: 9px 13px; font-size: 13px;
+                           font-weight: 600; background: rgba(255,255,255,.18); color: #fff; }
+                    .btn:active { opacity: .8; }
+                    .btn.light { background: #fff; color: #4c2f7c; }
+                    a.btn { text-decoration: none; display: inline-block; }
+                    main { max-width: 1120px; margin: 0 auto; padding: 12px; }
+                    .card { background: #fff; border-radius: 14px; padding: 14px; margin-bottom: 12px;
+                            box-shadow: 0 2px 10px rgba(60,40,100,.08); }
+                    .card h2 { margin: 0; font-size: 15px; color: #4c2f7c; }
+                    .card-head { display: flex; align-items: baseline; justify-content: space-between;
+                                 gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+                    .muted { color: #7a7388; font-size: 12px; }
+                    .banner { border-radius: 12px; padding: 12px 14px; font-size: 13px;
+                              line-height: 1.7; margin-bottom: 12px; display: none; }
+                    .banner.show { display: block; }
+                    .banner.warn { background: #fff4d6; border: 1px solid #f0d48a; color: #7a5300; }
+                    .banner.err { background: #fdeaea; border: 1px solid #f3c2c2; color: #a12b2b; }
+                    .stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+                             gap: 8px; margin-bottom: 12px; }
+                    .stat { background: #fff; border-radius: 12px; padding: 12px 10px; text-align: center;
+                            box-shadow: 0 2px 10px rgba(60,40,100,.07); border-top: 3px solid #b9aed6; }
+                    .stat .v { font-size: 22px; font-weight: 700; line-height: 1.2; }
+                    .stat .l { font-size: 12px; color: #7a7388; margin-top: 2px; }
+                    .stat.ok { border-top-color: #1e7b45; } .stat.ok .v { color: #1e7b45; }
+                    .stat.bad { border-top-color: #c0392b; } .stat.bad .v { color: #c0392b; }
+                    .stat.warn { border-top-color: #d68910; } .stat.warn .v { color: #b36b00; }
+                    .stat.info { border-top-color: #1a4f9c; } .stat.info .v { color: #1a4f9c; }
+                    .map { position: relative; width: 100%; height: 420px; overflow: hidden;
+                           border-radius: 12px; border: 1px solid #ece7f5;
+                           background:
+                             linear-gradient(#f0ecf7 1px, transparent 1px) 0 0 / 40px 40px,
+                             linear-gradient(90deg, #f0ecf7 1px, transparent 1px) 0 0 / 40px 40px,
+                             #f7f5fb; }
+                    .map .tile { position: absolute; width: 256px; height: 256px;
+                                 pointer-events: none; user-select: none; }
+                    .map .fence { position: absolute; border: 2px dashed rgba(91,58,143,.8);
+                                  background: rgba(91,58,143,.10); border-radius: 50%;
+                                  transform: translate(-50%, -50%); z-index: 1; }
+                    .map .fence-label { position: absolute; transform: translate(-50%, 0);
+                                        z-index: 2; white-space: nowrap; font-size: 12px;
+                                        font-weight: 700; color: #4c2f7c; padding: 1px 5px;
+                                        border-radius: 4px; background: rgba(255,255,255,.86); }
+                    .map .marker { position: absolute; transform: translate(-50%, -50%);
+                                   z-index: 3; text-align: center; text-decoration: none;
+                                   color: #24202c; }
+                    .map .marker .dot { display: block; width: 14px; height: 14px;
+                                        margin: 0 auto; border-radius: 50%; background: #8a8397;
+                                        border: 2px solid #fff;
+                                        box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+                    .map .marker .lbl { display: inline-block; margin-top: 2px; font-size: 12px;
+                                        font-weight: 700; padding: 1px 5px; border-radius: 4px;
+                                        background: rgba(255,255,255,.88); white-space: nowrap; }
+                    .map .marker:hover .lbl { background: #fff; }
+                    .map .zoom { position: absolute; right: 10px; top: 10px; z-index: 5;
+                                 display: flex; flex-direction: column; gap: 6px; }
+                    .map .zoom button { width: 32px; height: 32px; border: 0; border-radius: 8px;
+                                        background: rgba(255,255,255,.95); color: #4c2f7c;
+                                        font-size: 18px; font-weight: 700;
+                                        box-shadow: 0 2px 6px rgba(0,0,0,.18); }
+                    .map .attr { position: absolute; right: 8px; bottom: 6px; z-index: 4;
+                                 font-size: 11px; color: #555; padding: 2px 5px;
+                                 border-radius: 4px; background: rgba(255,255,255,.82); }
+                    .map .attr a { color: #555; }
+                    .map .scale { position: absolute; left: 12px; bottom: 14px; z-index: 4;
+                                  font-size: 11px; color: #333; padding: 2px 6px;
+                                  border-radius: 4px; background: rgba(255,255,255,.82); }
+                    .map .scale i { display: inline-block; height: 3px; background: #333;
+                                    vertical-align: middle; margin-right: 5px; }
+                    .map .map-empty { position: absolute; inset: 0; display: flex;
+                                      align-items: center; justify-content: center;
+                                      padding: 20px; text-align: center; color: #7a7388;
+                                      font-size: 13px; line-height: 1.8; }
+                    .map-link { color: #1a4f9c; text-decoration: none; font-size: 11px;
+                                margin-left: 4px; white-space: nowrap; }
+                    .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px;
+                              color: #5d5669; margin-top: 8px; }
+                    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+                                margin-right: 4px; vertical-align: -1px; }
+                    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                    .row { display: grid; grid-template-columns: 1.25fr .8fr 1fr 1fr 1.1fr;
+                           gap: 8px; align-items: center; padding: 9px 4px;
+                           border-bottom: 1px solid #f1edf7; font-size: 13px; }
+                    .row:last-child { border-bottom: 0; }
+                    .u-name { font-weight: 600; }
+                    .u-sub { color: #857e93; font-size: 11px; margin-top: 2px; }
+                    .u-coord { color: #6b6478; font-size: 11px; word-break: break-all; }
+                    .pill { display: inline-block; border-radius: 999px; padding: 3px 9px;
+                            font-size: 12px; font-weight: 700; white-space: nowrap; }
+                    .pill.inside { background: #e3f6ea; color: #1e7b45; }
+                    .pill.outside { background: #fdeaea; color: #b03030; }
+                    .pill.stale { background: #fff4d6; color: #8a5b00; }
+                    .pill.muted { background: #eee; color: #666; }
+                    .empty { color: #9a93a8; font-size: 13px; padding: 8px 0; line-height: 1.7; }
+                    .place { padding: 8px 0; border-bottom: 1px dashed #f0edf5; font-size: 13px; }
+                    .place:last-child { border-bottom: 0; }
+                    .place b { color: #4c2f7c; }
+                    .recent { font-size: 12px; padding: 6px 0; border-bottom: 1px dashed #f3eff9;
+                              display: flex; gap: 8px; }
+                    .recent:last-child { border-bottom: 0; }
+                    .recent .t { color: #857e93; white-space: nowrap; }
+                    footer { max-width: 1120px; margin: 0 auto; padding: 0 16px 24px;
+                             color: #948da2; font-size: 12px; line-height: 1.7; }
+                    @media (max-width: 760px) {
+                        .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+                        .grid2 { grid-template-columns: 1fr; }
+                        .map { height: 330px; }
+                        .row { grid-template-columns: 1.1fr .9fr; }
+                        .row .u-coord { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <header>
+                    <div class="bar">
+                        <h1>位置看板</h1>
+                        <button class="btn light" id="btn-refresh">刷新</button>
+                        <a class="btn" href="/machine_repair/mobile">手机端</a>
+                        <a class="btn" t-if="work_location_action_id"
+                           t-att-href="'/odoo/action-%s' % work_location_action_id">工作位置设置</a>
+                        <div class="sub">
+                            管理员 <t t-out="user_name"/> · 只显示最新位置，
+                            历史在「位置记录」里 · <span id="updated">正在读取…</span>
+                        </div>
+                    </div>
+                </header>
+
+                <main>
+                    <div id="banner" class="banner"></div>
+
+                    <div class="stats" id="stats"></div>
+
+                    <section class="card">
+                        <div class="card-head">
+                            <h2>位置分布</h2>
+                            <span class="muted">圆 = 工作位置范围，点 = 人员最后上报</span>
+                        </div>
+                        <div class="map" id="map">
+                            <div class="empty">正在读取…</div>
+                        </div>
+                        <div class="legend">
+                            <span><i style="background:#1e7b45"></i>在工作位置</span>
+                            <span><i style="background:#c0392b"></i>离开工作位置</span>
+                            <span><i style="background:#d68910"></i>已失联（最后位置）</span>
+                            <span><i style="background:#8a8397"></i>未分配工作位置</span>
+                            <span><i style="background:#5B3A8F;opacity:.25"></i>工作位置范围</span>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-head">
+                            <h2>人员状态</h2>
+                            <span class="muted" id="user-count"></span>
+                        </div>
+                        <div id="users"><div class="empty">正在读取…</div></div>
+                    </section>
+
+                    <div class="grid2">
+                        <section class="card">
+                            <h2>工作位置</h2>
+                            <div id="places" style="margin-top:8px"><div class="empty">正在读取…</div></div>
+                        </section>
+                        <section class="card">
+                            <h2>最近上报</h2>
+                            <div id="recent" style="margin-top:8px"><div class="empty">正在读取…</div></div>
+                        </section>
+                    </div>
+                </main>
+
+                <footer>
+                    位置信息属于敏感数据，仅「位置监控管理员 / 系统管理员」可见；
+                    师傅账号在 Odoo 里没有位置菜单，接口也只返回本人状态。
+                    手机端只有在前台使用时会持续上报（系统限制，关闭 App 后停止）。
+                </footer>
+
+                <script>
+//<![CDATA[
+(function () {
+    var BASE = '/machine_repair/locations';
+    var REFRESH_MS = 30000;
+    var timer = null;
+    var loading = false;
+
+    function el(id) { return document.getElementById(id); }
+    function esc(s) {
+        return String(s === undefined || s === null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function fmtTime(ts) {
+        if (!ts) { return '—'; }
+        var d = new Date(ts * 1000);
+        return (d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' '
+            + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    }
+    function relTime(ts) {
+        if (!ts) { return '未上报'; }
+        var sec = Math.max(0, Math.round(Date.now() / 1000 - ts));
+        if (sec < 45) { return '刚刚'; }
+        if (sec < 3600) { return Math.round(sec / 60) + ' 分钟前'; }
+        if (sec < 86400) { return Math.round(sec / 3600) + ' 小时前'; }
+        return Math.round(sec / 86400) + ' 天前';
+    }
+    function chip(u) {
+        if (u.enabled === false) { return '<span class="pill muted">已停用上报</span>'; }
+        if (!u.last_ts) { return '<span class="pill muted">未上报</span>'; }
+        if (u.stale) { return '<span class="pill stale">失联 · ' + relTime(u.last_ts) + '</span>'; }
+        if (u.state === 'inside') { return '<span class="pill inside">在工作位置</span>'; }
+        if (u.state === 'outside') { return '<span class="pill outside">离开工作位置</span>'; }
+        return '<span class="pill muted">未分配位置</span>';
+    }
+    function stat(label, value, cls) {
+        return '<div class="stat ' + (cls || '') + '"><div class="v">' + value
+            + '</div><div class="l">' + label + '</div></div>';
+    }
+    function banner(text, kind) {
+        var box = el('banner');
+        if (!text) { box.className = 'banner'; box.innerHTML = ''; return; }
+        box.className = 'banner show ' + (kind || 'warn');
+        box.innerHTML = text;
+    }
+
+    // ------------------------------------------------------------ 地图
+    // 用高德瓦片（免 key 的栅格瓦片）画真实街道；手机 GPS 是 WGS-84，
+    // 画到高德地图前统一转 GCJ-02，避免点位偏移 300~600 米。
+    var mapState = {places: [], users: [], zoom: null, initialized: false, manualZoom: false};
+
+    function outOfChina(lat, lng) {
+        return !(lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55);
+    }
+    function transformLat(x, y) {
+        var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+        ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+        ret += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
+        ret += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
+        return ret;
+    }
+    function transformLng(x, y) {
+        var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+        ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+        ret += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
+        ret += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
+        return ret;
+    }
+    function wgs84ToGcj02(lat, lng) {
+        if (outOfChina(lat, lng)) { return {lat: lat, lng: lng}; }
+        var dLat = transformLat(lng - 105.0, lat - 35.0);
+        var dLng = transformLng(lng - 105.0, lat - 35.0);
+        var radLat = lat / 180.0 * Math.PI;
+        var magic = Math.sin(radLat);
+        magic = 1 - 0.00669342162296594323 * magic * magic;
+        var sqrtMagic = Math.sqrt(magic);
+        dLat = (dLat * 180.0) / ((6335552.717000426 / (magic * sqrtMagic)) * Math.PI);
+        dLng = (dLng * 180.0) / (6378245.0 / sqrtMagic * Math.cos(radLat) * Math.PI);
+        return {lat: lat + dLat, lng: lng + dLng};
+    }
+    function placeGcj(p) {
+        if (p.coord_system === 'gcj02') { return {lat: p.lat, lng: p.lng}; }
+        return wgs84ToGcj02(p.lat, p.lng);
+    }
+    function gcjAmapUrl(gLat, gLng, name) {
+        return 'https://uri.amap.com/marker?position=' + gLng.toFixed(7) + ',' + gLat.toFixed(7)
+            + '&name=' + encodeURIComponent(name || '位置')
+            + '&coordinate=gaode&callnative=0';
+    }
+    function amapUrl(lat, lng, name) {
+        var g = wgs84ToGcj02(lat, lng);
+        return gcjAmapUrl(g.lat, g.lng, name);
+    }
+    function placeUrl(p) {
+        var g = placeGcj(p);
+        return gcjAmapUrl(g.lat, g.lng, p.name);
+    }
+    function project(lat, lng, z) {
+        var size = 256 * Math.pow(2, z);
+        var x = (lng + 180) / 360 * size;
+        var s = Math.sin(lat * Math.PI / 180);
+        var y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * size;
+        return {x: x, y: y};
+    }
+    function metersPerPx(lat, z) {
+        return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
+    }
+    function fitZoom(points, W, H, pad) {
+        var lat0 = 0;
+        points.forEach(function (p) { lat0 += p.lat; });
+        lat0 /= points.length;
+        for (var z = 17; z >= 4; z--) {
+            var mpp = metersPerPx(lat0, z);
+            var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            points.forEach(function (p) {
+                var q = project(p.lat, p.lng, z);
+                var r = (p.radius || 0) / mpp;
+                minX = Math.min(minX, q.x - r); maxX = Math.max(maxX, q.x + r);
+                minY = Math.min(minY, q.y - r); maxY = Math.max(maxY, q.y + r);
+            });
+            if (maxX - minX <= W - 2 * pad && maxY - minY <= H - 2 * pad) { return z; }
+        }
+        return 4;
+    }
+    function renderMap(places, users, keepZoom) {
+        var box = el('map');
+        mapState.places = places || [];
+        mapState.users = users || [];
+        var pts = [];
+        mapState.places.forEach(function (p) {
+            if (p.lat === null || p.lat === undefined || p.lng === null || p.lng === undefined) { return; }
+            var g = placeGcj(p);
+            pts.push({lat: g.lat, lng: g.lng, radius: p.radius || 0, kind: 'place',
+                      label: p.name, data: p});
+        });
+        mapState.users.forEach(function (u) {
+            if (u.lat === null || u.lat === undefined || u.lng === null || u.lng === undefined) { return; }
+            var g = wgs84ToGcj02(u.lat, u.lng);
+            pts.push({lat: g.lat, lng: g.lng, radius: 0, kind: 'user',
+                      label: u.name, data: u, state: u.state, stale: u.stale});
+        });
+        if (!pts.length) {
+            box.innerHTML = '<div class="map-empty">还没有坐标数据。<br/>'
+                + '手机端打开 App / 网页并允许定位后会自动上报；'
+                + '如需显示工作位置范围，请到「工作位置」添加经纬度。</div>';
+            mapState.initialized = false;
+            mapState.zoom = null;
+            mapState.manualZoom = false;
+            return;
+        }
+        var W = Math.max(320, Math.round(box.clientWidth || 800));
+        var H = Math.max(240, Math.round(box.clientHeight || 420));
+        var pad = Math.max(36, Math.min(60, Math.round(W * 0.06)));
+        var zoom = (keepZoom && mapState.zoom) ? mapState.zoom : fitZoom(pts, W, H, pad);
+        mapState.zoom = zoom;
+        mapState.initialized = true;
+
+        var lat0 = 0;
+        pts.forEach(function (p) { lat0 += p.lat; });
+        lat0 /= pts.length;
+        var mpp = metersPerPx(lat0, zoom);
+        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        pts.forEach(function (p) {
+            var q = project(p.lat, p.lng, zoom);
+            var r = (p.radius || 0) / mpp;
+            minX = Math.min(minX, q.x - r); maxX = Math.max(maxX, q.x + r);
+            minY = Math.min(minY, q.y - r); maxY = Math.max(maxY, q.y + r);
+        });
+        var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        var left = cx - W / 2, top = cy - H / 2;
+        var n = Math.pow(2, zoom);
+        var x0 = Math.floor(left / 256), x1 = Math.floor((left + W) / 256);
+        var y0 = Math.max(0, Math.floor(top / 256));
+        var y1 = Math.min(n - 1, Math.floor((top + H) / 256));
+        var out = [];
+        for (var tx = x0; tx <= x1; tx++) {
+            var wrapX = ((tx % n) + n) % n;
+            for (var ty = y0; ty <= y1; ty++) {
+                var sub = (Math.abs(tx + ty) % 4) + 1;
+                var url = 'https://webrd0' + sub + '.is.autonavi.com/appmaptile'
+                    + '?lang=zh_cn&size=1&scale=1&style=8'
+                    + '&x=' + wrapX + '&y=' + ty + '&z=' + zoom;
+                out.push('<img class="tile" alt="" src="' + url + '"'
+                    + ' style="left:' + (tx * 256 - left) + 'px;top:' + (ty * 256 - top) + 'px"'
+                    + ' onerror="this.style.visibility=\'hidden\'"/>');
+            }
+        }
+        pts.forEach(function (p) {
+            if (p.kind !== 'place') { return; }
+            var q = project(p.lat, p.lng, zoom);
+            var x = q.x - left, y = q.y - top;
+            var rpx = Math.max(4, (p.radius || 0) / mpp);
+            out.push('<div class="fence" style="left:' + x + 'px;top:' + y
+                + 'px;width:' + (2 * rpx) + 'px;height:' + (2 * rpx) + 'px"></div>');
+            out.push('<div class="fence-label" style="left:' + x + 'px;top:'
+                + (y + rpx + 4) + 'px">' + esc(p.label) + '</div>');
+        });
+        var drawnDots = [];
+        pts.forEach(function (p) {
+            if (p.kind !== 'user') { return; }
+            var q = project(p.lat, p.lng, zoom);
+            var x = q.x - left, y = q.y - top, tries = 0;
+            while (tries < 8 && drawnDots.some(function (d) {
+                return Math.abs(d.x - x) < 20 && Math.abs(d.y - y) < 20;
+            })) {
+                x += 14; y -= 12; tries += 1;
+            }
+            drawnDots.push({x: x, y: y});
+            var color = '#8a8397';
+            if (p.stale) { color = '#d68910'; }
+            else if (p.state === 'inside') { color = '#1e7b45'; }
+            else if (p.state === 'outside') { color = '#c0392b'; }
+            var url = amapUrl(p.data.lat, p.data.lng, p.label);
+            out.push('<a class="marker" href="' + esc(url) + '" target="_blank" rel="noopener"'
+                + ' style="left:' + x + 'px;top:' + y + 'px">'
+                + '<span class="dot" style="background:' + color + '"></span>'
+                + '<span class="lbl">' + esc(p.label) + '</span></a>');
+        });
+        var bar = 100;
+        [10, 20, 50, 100, 200, 500, 1000, 2000, 5000].forEach(function (m) {
+            if (m / mpp <= 150) { bar = m; }
+        });
+        out.push('<div class="scale"><i style="width:' + (bar / mpp).toFixed(0)
+            + 'px"></i>' + bar + ' 米</div>');
+        out.push('<div class="zoom">'
+            + '<button type="button" data-zoom="in">+</button>'
+            + '<button type="button" data-zoom="out">−</button></div>');
+        out.push('<div class="attr">© <a href="https://www.amap.com" target="_blank"'
+            + ' rel="noopener">高德地图</a></div>');
+        box.innerHTML = out.join('');
+        box.querySelectorAll('[data-zoom]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var z = mapState.zoom || 16;
+                z += (btn.getAttribute('data-zoom') === 'in') ? 1 : -1;
+                mapState.zoom = Math.max(4, Math.min(18, z));
+                mapState.manualZoom = true;
+                renderMap(mapState.places, mapState.users, true);
+            });
+        });
+    }
+
+    // ------------------------------------------------------------ 渲染
+    function render(data) {
+        var cfg = data.config || {};
+        var stats = data.stats || {};
+        el('stats').innerHTML =
+            stat('纳入监控', stats.total || 0, 'info') +
+            stat('在工作位置', stats.inside || 0, 'ok') +
+            stat('离开', stats.outside || 0, 'bad') +
+            stat('未分配', stats.unassigned || 0, '') +
+            stat('未上报', stats.no_report || 0, '') +
+            stat('已失联', stats.stale || 0, 'warn');
+
+        if (!data.places || !data.places.length) {
+            if (!data.users || !data.users.length) {
+                banner('还没有位置数据。手机端 App / 网页打开并允许定位后会自动上报；'
+                    + '如需判断是否在岗，请到 Odoo 后台 <b>机台维修 → 位置监控 → 工作位置</b>'
+                    + ' 添加地点（经纬度 + 范围半径）。', 'warn');
+            } else {
+                banner('已收到手机端位置，但还没有配置「工作位置」，因此只能看到位置记录、无法判断是否在岗。'
+                    + '到 <b>机台维修 → 位置监控 → 工作位置</b> 添加经纬度与半径即可。', 'warn');
+            }
+        } else if (!data.users || !data.users.length) {
+            banner('工作位置已配置，等待手机端上报。让师傅打开 <b>机台维修 App / 手机网页</b>'
+                + ' 并允许定位即可，不需要手动操作。', 'warn');
+        } else {
+            banner('');
+        }
+
+        var users = data.users || [];
+        el('user-count').textContent = '共 ' + users.length + ' 人 · 超过 '
+            + (cfg.stale_minutes || 15) + ' 分钟未上报显示为失联';
+        if (!users.length) {
+            el('users').innerHTML = '<div class="empty">暂无人员上报。</div>';
+        } else {
+            el('users').innerHTML = users.map(function (u) {
+                var dist = (u.distance === null || u.distance === undefined)
+                    ? '—' : (Math.round(u.distance) + ' 米');
+                var coord = (u.lat === null || u.lat === undefined)
+                    ? '—' : (Number(u.lat).toFixed(5) + ', ' + Number(u.lng).toFixed(5));
+                var mapLink = (u.lat === null || u.lat === undefined)
+                    ? '' : (' <a class="map-link" target="_blank" rel="noopener" href="'
+                            + esc(amapUrl(u.lat, u.lng, u.name)) + '">高德地图</a>');
+                return '<div class="row">' +
+                    '<div><div class="u-name">' + esc(u.name) + '</div>' +
+                    '<div class="u-sub">' + esc(u.login || '') + '</div></div>' +
+                    '<div>' + chip(u) + '</div>' +
+                    '<div><b>' + esc(u.place || '—') + '</b><div class="u-sub">距中心 '
+                        + dist + mapLink + '</div></div>' +
+                    '<div><b>' + relTime(u.last_ts) + '</b><div class="u-sub">' +
+                        (u.accuracy ? ('精度 ±' + Math.round(u.accuracy) + ' 米')
+                                    : (u.last_ts ? '无精度' : '从未上报')) + '</div></div>' +
+                    '<div class="u-coord">' + coord + '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        renderMap(data.places || [], users, mapState.manualZoom);
+
+        var places = data.places || [];
+        el('places').innerHTML = places.length ? places.map(function (p) {
+            return '<div class="place"><b>' + esc(p.name) + '</b>'
+                + (p.partner ? (' · ' + esc(p.partner)) : '')
+                + '<div class="u-sub">半径 ' + Math.round(p.radius || 0) + ' 米 · '
+                + (p.user_count || 0) + ' 人'
+                + (p.lat !== null && p.lat !== undefined
+                    ? (' · <a class="map-link" target="_blank" rel="noopener" href="'
+                       + esc(placeUrl(p)) + '">高德地图</a>')
+                    : '')
+                + '</div></div>';
+        }).join('') : '<div class="empty">还没有工作位置。</div>';
+
+        var recent = data.recent || [];
+        el('recent').innerHTML = recent.length ? recent.map(function (r) {
+            var link = (r.lat === null || r.lat === undefined) ? ''
+                : (' <a class="map-link" target="_blank" rel="noopener" href="'
+                   + esc(amapUrl(r.lat, r.lng, r.user)) + '">地图</a>');
+            return '<div class="recent"><span class="t">' + fmtTime(r.ts) + '</span>'
+                + '<span><b>' + esc(r.user) + '</b> · ' + esc(r.state_label)
+                + (r.distance !== null && r.distance !== undefined
+                    ? (' · ' + Math.round(r.distance) + ' 米') : '')
+                + link + '</span></div>';
+        }).join('') : '<div class="empty">还没有上报表。</div>';
+
+        el('updated').textContent = '最后更新 ' + fmtTime(Math.floor(Date.now() / 1000))
+            + '，每 30 秒自动刷新';
+    }
+
+    // ------------------------------------------------------------ 读取
+    function schedule() {
+        if (timer) { clearTimeout(timer); }
+        timer = setTimeout(function () {
+            if (document.hidden) { schedule(); return; }
+            load();
+        }, REFRESH_MS);
+    }
+
+    function load() {
+        if (loading) { return; }
+        loading = true;
+        var forbidden = false;
+        fetch(BASE + '/data', {credentials: 'same-origin', cache: 'no-store'})
+            .then(function (resp) {
+                if (resp.status === 403) { throw new Error('forbidden'); }
+                if (!resp.ok) { throw new Error('http ' + resp.status); }
+                return resp.json();
+            })
+            .then(function (data) {
+                if (!data || !data.ok) { throw new Error((data && data.error) || 'bad data'); }
+                render(data);
+            })
+            .catch(function (err) {
+                if (String(err.message).indexOf('forbidden') >= 0) {
+                    forbidden = true;
+                    banner('只有「位置监控管理员」才能查看位置信息。', 'err');
+                    el('updated').textContent = '无权限';
+                    return;
+                }
+                banner('读取失败：' + esc(err.message || '网络错误') + '，稍后自动重试。', 'err');
+            })
+            .then(function () {
+                loading = false;
+                if (!forbidden) { schedule(); }
+            });
+    }
+
+    el('btn-refresh').addEventListener('click', load);
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) { load(); }
+    });
+    load();
+})();
+//]]>
+                </script>
+            </body>
+        </html>
+    </template>
+</odoo>
