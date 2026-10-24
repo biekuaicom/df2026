@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ 发货单 ============ -->
+    <record id="view_machine_repair_shipment_list" model="ir.ui.view">
+        <field name="name">machine.repair.shipment.list</field>
+        <field name="model">machine.repair.shipment</field>
+        <field name="arch" type="xml">
+            <list string="发货记录">
+                <field name="name"/>
+                <field name="tracking_no"/>
+                <field name="carrier" optional="show"/>
+                <field name="ship_date"/>
+                <field name="partner_names" optional="show"/>
+                <field name="order_names"/>
+                <field name="order_count" optional="show"/>
+                <field name="photo_count" optional="show"/>
+                <field name="user_id" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_shipment_form" model="ir.ui.view">
+        <field name="name">machine.repair.shipment.form</field>
+        <field name="model">machine.repair.shipment</field>
+        <field name="arch" type="xml">
+            <form string="发货单">
+                <header>
+                    <button name="action_view_orders" type="object" string="查看工单"
+                            class="btn-secondary"/>
+                    <button name="action_apply_shipping" type="object" string="补记发货 / 保修起算"
+                            class="btn-secondary"
+                            help="手工补录的发货单用这个按钮：按本单发货时间起算首次维修的保修"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="tracking_no" placeholder="扫快递单条码，或手工填写"/>
+                            <field name="carrier"/>
+                            <field name="ship_date"/>
+                        </group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="order_count"/>
+                            <field name="photo_count"/>
+                            <field name="partner_names"/>
+                            <field name="machine_numbers"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="工单（可多张）" name="orders">
+                            <field name="order_ids">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="partner_id"/>
+                                    <field name="machine_id"/>
+                                    <field name="tracking_no"/>
+                                    <field name="ship_date" optional="show"/>
+                                </list>
+                            </field>
+                            <div class="text-muted mt-2">
+                                一个快递单号可以寄多块板 —— 这里可以有多张工单，售后按单号就能查到全部板件。
+                            </div>
+                        </page>
+                        <page string="包装照片" name="photos">
+                            <field name="photo_ids">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="image" widget="image"
+                                           options="{'size': [90, 90]}"/>
+                                    <field name="name" placeholder="如：外箱 / 内包装 / 板件特写"/>
+                                    <field name="taken_at" optional="hide"/>
+                                </list>
+                            </field>
+                            <div class="text-muted mt-2">
+                                多拍几张：外箱、内包装、板件叠放，合影能避免“少了一块”的争议。
+                            </div>
+                        </page>
+                        <page string="备注" name="note">
+                            <field name="note" placeholder="快递公司、特殊说明等"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_shipment_search" model="ir.ui.view">
+        <field name="name">machine.repair.shipment.search</field>
+        <field name="model">machine.repair.shipment</field>
+        <field name="arch" type="xml">
+            <search string="发货记录">
+                <field name="name"/>
+                <field name="tracking_no"/>
+                <field name="order_ids"/>
+                <field name="partner_names"/>
+                <separator/>
+                <filter name="group_by_user" string="发货人" context="{'group_by': 'user_id'}"/>
+                <filter name="group_by_day" string="发货日期" context="{'group_by': 'ship_date:day'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_machine_repair_shipment" model="ir.actions.act_window">
+        <field name="name">发货记录</field>
+        <field name="res_model">machine.repair.shipment</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">还没有发货记录</p>
+            <p>发货请在「待发货」里勾选工单，点「合并发货」：扫快递单号 + 拍包装照片后确认，
+               一张发货单可以合并多张工单。</p>
+        </field>
+    </record>
+
+    <!-- ============ 后台批量发货向导 ============ -->
+    <record id="view_repair_ship_wizard_form" model="ir.ui.view">
+        <field name="name">machine.repair.ship.wizard.form</field>
+        <field name="model">machine.repair.ship.wizard</field>
+        <field name="arch" type="xml">
+            <form string="合并发货">
+                <group>
+                    <group>
+                        <field name="tracking_no" placeholder="扫快递单条码，或手工填写"/>
+                        <field name="carrier"/>
+                        <field name="order_count"/>
+                    </group>
+                    <group>
+                        <field name="note" placeholder="可选"/>
+                    </group>
+                </group>
+                <group string="要一起发货的工单">
+                    <field name="order_ids" nolabel="1">
+                        <list>
+                            <field name="name"/>
+                            <field name="partner_id"/>
+                            <field name="machine_id"/>
+                            <field name="ship_status"/>
+                        </list>
+                    </field>
+                </group>
+                <group string="包装照片（至少 1 张）">
+                    <field name="photo_ids" nolabel="1">
+                        <list editable="bottom">
+                            <field name="image" widget="image" options="{'size': [90, 90]}"/>
+                            <field name="name" placeholder="如：外箱 / 内包装"/>
+                        </list>
+                    </field>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object" string="确定发货" class="btn-primary"/>
+                    <button special="cancel" string="取消" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_repair_ship_wizard" model="ir.actions.act_window">
+        <field name="name">合并发货</field>
+        <field name="res_model">machine.repair.ship.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>
