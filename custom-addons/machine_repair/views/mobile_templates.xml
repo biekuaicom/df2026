@@ -2711,11 +2711,9 @@
 
                     // Android WebView 的多选文件选择器不可靠：createIntent() 带 EXTRA_ALLOW_MULTIPLE 时，
                     // 用户在相册里选好点「添加」，结果不回到 WebView，change 事件根本不触发 ——
-                    // 表现就是「点了没反应、不报错也不成功」。
-                    // 实测（MRDIAG 埋点）：App 内点击后只有 click-album，没有 change。
-                    // 而「录制视频」不带 multiple，一直正常 —— 两条路唯一差别就是它。
-                    // 所以 App 里去掉 multiple，走和录制完全相同的单选回传路径；
-                    // 浏览器 / PWA 保留多选（那边没问题）。
+                    // 表现就是「点了没反应、不报错也不成功」。而「录制视频」不带 multiple，一直正常。
+                    // 所以 App 内去掉 multiple，走和录制完全相同的单选回传路径；
+                    // 浏览器 / PWA 保留多选（那边没问题）。详见 README 第 11 节。
                     if (NATIVE) {
                         var albumInput = document.getElementById('video-input');
                         if (albumInput) { albumInput.removeAttribute('multiple'); }
