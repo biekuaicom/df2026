@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 客户类型：包月用户 / 活期用户。
+         活期用户不包月，机台上的包月字段会置灰，器件全部按「另计费」。 -->
+    <record id="view_partner_form_machine_repair" model="ir.ui.view">
+        <field name="name">res.partner.form.machine_repair</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='sale']" position="inside">
+                <field name="customer_type" widget="radio" options="{'horizontal': true}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_partner_search_machine_repair" model="ir.ui.view">
+        <field name="name">res.partner.search.machine_repair</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_res_partner_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[@name='filter_vat_set']" position="before">
+                <filter name="filter_customer_monthly" string="包月用户"
+                        domain="[('customer_type', '=', 'monthly')]"/>
+                <filter name="filter_customer_adhoc" string="活期用户"
+                        domain="[('customer_type', '=', 'adhoc')]"/>
+                <separator/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
