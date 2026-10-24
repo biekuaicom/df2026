@@ -7,6 +7,7 @@
             <list string="客户机台台账">
                 <field name="machine_no"/>
                 <field name="partner_id"/>
+                <field name="customer_type" optional="show"/>
                 <field name="machine_model"/>
                 <field name="installation_address" optional="show"/>
                 <field name="monthly_fee" sum="合计"/>
@@ -26,6 +27,10 @@
                     <button name="action_load_template_lines" type="object"
                             string="从模板载入器件基线" class="btn-primary"
                             help="按所选机型模板的专属电路板清单，生成本机台的器件行（仅当器件行为空时可执行）"/>
+                    <button name="%(action_machine_billing_column)d" type="action"
+                            string="整列设置计费" class="btn-secondary"
+                            context="{'default_machine_id': id}"
+                            help="一次把计费方式 / 另计单价 / 保修月数刷到所有器件行，之后仍可逐行微调"/>
                     <button name="%(action_machine_copy_wizard)d" type="action"
                             string="批量复制机台" class="btn-secondary"
                             context="{'default_source_machine_id': id}"/>
@@ -38,20 +43,30 @@
                     <group>
                         <group>
                             <field name="partner_id" options="{'no_create': True}"/>
+                            <field name="customer_type"/>
                             <field name="template_id" options="{'no_create': True}"/>
                             <field name="machine_model"/>
                             <field name="installation_address"/>
                         </group>
                         <group>
-                            <field name="monthly_fee"/>
-                            <field name="monthly_start_date"/>
-                            <field name="monthly_active"/>
-                            <field name="monthly_end_date" invisible="monthly_active"/>
+                            <field name="monthly_fee" readonly="customer_type == 'adhoc'"/>
+                            <field name="monthly_start_date" readonly="customer_type == 'adhoc'"/>
+                            <field name="monthly_active" readonly="customer_type == 'adhoc'"/>
+                            <field name="monthly_end_date" invisible="monthly_active or customer_type == 'adhoc'"/>
                             <field name="line_count"/>
                             <field name="extra_parts_amount" invisible="not extra_parts_amount"/>
                             <field name="active"/>
                         </group>
                     </group>
+                    <div class="text-muted mb-2">
+                        客户类型跟随客户档案：先选客户，这里会自动带出；直接改这里会<b>同步回客户</b>
+                        （同一客户名下的机台共用同一个类型）。包月用户按包月收费；
+                        活期用户不包月，器件一律按「另计费」。
+                    </div>
+                    <div class="alert alert-info" role="alert" invisible="customer_type != 'adhoc'">
+                        该客户是<b>活期用户</b>：不包月，包月单价 / 生效日期 / 包月中不参与计费；
+                        下面所有器件都按「另计费」处理。
+                    </div>
                     <notebook>
                         <page string="器件基线" name="lines">
                             <field name="line_ids">
@@ -59,7 +74,7 @@
                                     <field name="product_id"
                                            options="{'no_create': False}"
                                            context="{'machine_repair_board_default': True}"/>
-                                    <field name="billing_type"/>
+                                    <field name="billing_type" readonly="parent.customer_type == 'adhoc'"/>
                                     <field name="extra_price" invisible="billing_type != 'extra'"/>
                                     <field name="extra_subtotal" invisible="billing_type != 'extra'"
                                            sum="另计合计"/>
@@ -72,6 +87,8 @@
                                 选好机型模板后，该模板下的专属电路板会<b>自动带进来</b>；
                                 模板里没有的可以点「添加行」手动补。
                                 「计费方式」决定这块板是含在包月单价里，还是每次维修按「另计单价」另算。
+                                想一次把计费方式 / 另计单价 / 保修月数统一刷到所有行，用上面的
+                                <b>「整列设置计费」</b>，刷完仍然可以单独改某一行。
                                 板件 SN 与二维码不在这里录 —— 等真正发工单扫码时才生成。
                             </div>
                         </page>
@@ -93,10 +110,15 @@
                 <field name="machine_no"/>
                 <field name="partner_id"/>
                 <field name="template_id"/>
+                <field name="customer_type"/>
                 <filter name="filter_monthly" string="包月中" domain="[('monthly_active', '=', True)]"/>
+                <filter name="filter_adhoc" string="活期用户"
+                        domain="[('customer_type', '=', 'adhoc')]"/>
                 <filter name="filter_archived" string="已归档" domain="[('active', '=', False)]"/>
                 <filter name="group_by_partner" string="按客户" context="{'group_by': 'partner_id'}"/>
                 <filter name="group_by_template" string="按机型" context="{'group_by': 'template_id'}"/>
+                <filter name="group_by_customer_type" string="按客户类型"
+                        context="{'group_by': 'customer_type'}"/>
             </search>
         </field>
     </record>
