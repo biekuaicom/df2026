@@ -1,11 +1,13 @@
 ﻿<#
   打包「机台维修」Android APK（不依赖 Gradle / Android Studio）
   ------------------------------------------------------------
-    .\build-apk.ps1                                  用默认工具链路径
+    .\build-apk.ps1                                  用默认工具链路径（版本号自动取自 AndroidManifest.xml）
+    .\build-apk.ps1 -Version 1.16                    手动指定版本号（一般不需要）
     .\build-apk.ps1 -Jdk D:\toolchain\jdk -Sdk D:\toolchain\sdk
     .\build-apk.ps1 -Install                         打包成功后用 adb 安装到连着的手机
 
   产物：mobile-android\dist\jiTaiWeiXiu-<版本>.apk
+        发布：D:\Odoo\dist\机台维修App-v<版本>.apk（文件名带版本号；上一版自动移入 dist\archive\）
   签名：首次运行会用 keytool 自动生成 mobile-android\keystore\repair.jks
         （口令在脚本里，仅用于内部侧载安装；正式上架请换成自己的签名）
 
@@ -19,7 +21,9 @@ param(
   [string]$Root = 'D:\Odoo\mobile-android',
   [string]$Jdk = 'D:\Odoo\toolchain\jdk',
   [string]$Sdk = 'D:\Odoo\toolchain\sdk',
-  [string]$Version = '1.0',
+  # 不传 -Version 时自动从 AndroidManifest.xml 的 versionName 取，
+  # 避免“清单里是 1.16、文件名还是 1.15”这种对不上号的情况。
+  [string]$Version = '',
   [switch]$Install
 )
 $ErrorActionPreference = 'Stop'
@@ -36,6 +40,15 @@ $keystore = Join-Path $keystoreDir 'repair.jks'
 $ksPass = 'RepairApp2026'
 $alias = 'repair'
 
+$manifest = Join-Path $app 'AndroidManifest.xml'
+if (-not $Version -and (Test-Path $manifest)) {
+  $hit = Select-String -Path $manifest -Pattern 'android:versionName="([^"]+)"' -Encoding UTF8 |
+    Select-Object -First 1
+  if ($hit) { $Version = $hit.Matches[0].Groups[1].Value }
+}
+if (-not $Version) { $Version = '1.0' }
+Write-Host ("版本号：{0}" -f $Version)
+
 foreach ($p in @($build, $gen, $classes, $dex, $dist, $keystoreDir)) {
   New-Item -ItemType Directory -Force -Path $p | Out-Null
 }
@@ -46,6 +59,11 @@ $javac = Join-Path $Jdk 'bin\javac.exe'
 $keytool = Join-Path $Jdk 'bin\keytool.exe'
 $jar = Join-Path $Jdk 'bin\jar.exe'
 if (-not (Test-Path $java)) { Fail "找不到 JDK：$Jdk（先装 JDK 17）" }
+
+# d8.bat 用 JAVA_HOME/PATH 找 java；不设置会在 [4/6] 报
+# "JAVA_HOME is not set and no 'java' command could be found"
+$env:JAVA_HOME = $Jdk
+$env:Path = (Join-Path $Jdk 'bin') + ';' + $env:Path
 
 $buildTools = Get-ChildItem (Join-Path $Sdk 'build-tools') -Directory -ErrorAction SilentlyContinue |
   Sort-Object Name -Descending | Select-Object -First 1
@@ -136,8 +154,36 @@ $apk = Join-Path $dist ("jiTaiWeiXiu-$Version.apk")
 if ($LASTEXITCODE -ne 0) { Fail 'apksigner 签名失败' }
 & $apksigner verify --print-certs $apk | Select-Object -First 3 | ForEach-Object { "  $_" }
 
+# 发布到 D:\Odoo\dist：文件名带版本号（机台维修App-v1.15.apk），
+# 旧版本自动挪到 dist\archive，dist 根目录永远只有“当前这一版”，不会堆一堆同名文件。
+# 这样发人/拷手机时一眼能看出装的是哪一版，回滚也有旧包可用。
+$publishDir = 'D:\Odoo\dist'
+$archiveDir = Join-Path $publishDir 'archive'
+New-Item -ItemType Directory -Force -Path $publishDir, $archiveDir | Out-Null
+$publishedName = "机台维修App-v$Version.apk"
+$published = Join-Path $publishDir $publishedName
+
+Get-ChildItem $publishDir -File -Filter '机台维修App-v*.apk' -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -ne $publishedName } |
+  ForEach-Object {
+    $target = Join-Path $archiveDir $_.Name
+    if (Test-Path $target) { Remove-Item $target -Force }
+    Move-Item -LiteralPath $_.FullName -Destination $target -Force
+    "  旧版本已归档：$($_.Name)"
+  }
+
+# 历史固定名（机台维修App-最新版.apk）也归档，避免和新命名混淆
+$legacy = Join-Path $publishDir '机台维修App-最新版.apk'
+if (Test-Path $legacy) {
+  Move-Item -LiteralPath $legacy -Destination (Join-Path $archiveDir '机台维修App-最新版.apk') -Force
+  "  旧命名的安装包已归档：机台维修App-最新版.apk"
+}
+
+Copy-Item -LiteralPath $apk -Destination $published -Force
+
 "`n✅ 打包完成：$apk"
 "   大小：" + [math]::Round((Get-Item $apk).Length / 1KB, 1) + " KB"
+"   发布（带版本号）：$published"
 "   安装：把 apk 传到手机点开安装（需允许「未知来源」），或执行："
 "         .\build-apk.ps1 -Install"
 
