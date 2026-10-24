@@ -397,7 +397,7 @@
                         <div class="card">
                             <h2>账号</h2>
                             <div class="kv"><span>当前用户</span><b><t t-out="user_name"/></b></div>
-                            <div class="kv"><span>页面版本</span><b>v39</b></div>
+                            <div class="kv"><span>页面版本</span><b>v40</b></div>
                             <button class="btn ghost" id="btn-logout" style="margin-top:10px">退出登录</button>
                         </div>
                     </div>
@@ -2545,25 +2545,59 @@
                     });
 
                     // 单个视频：先读时长（≤5 分钟），再用 XHR 上传（能拿到上传进度）
+                    // 体积上限：服务端校验 200MB；但公网走 Cloudflare 隧道时实际只有 100MB，
+                    // 所以 100MB 以上只给警告（内网直连仍可传），200MB 以上直接拦下。
+                    var VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+                    var VIDEO_WARN_BYTES = 100 * 1024 * 1024;
+                    var VIDEO_PROBE_MS = 15000;
                     function uploadVideoFile(file, label) {
                         return new Promise(function (resolve) {
-                            if (!file || !detailOrder) { resolve(false); return; }
-                            var url = URL.createObjectURL(file);
+                            // settled 保证 Promise 只结算一次；done() 统一收尾（清超时、放 blob URL）
+                            var settled = false, timer = null, url = null;
+                            function done(ok, msg) {
+                                if (settled) { return; }
+                                settled = true;
+                                if (timer) { clearTimeout(timer); timer = null; }
+                                if (url) { try { URL.revokeObjectURL(url); } catch (e) {} url = null; }
+                                if (!ok && msg) { toast(msg, 6000); }
+                                resolve(!!ok);
+                            }
+                            if (!file || !detailOrder) { done(false); return; }
+                            // 相册里的大视频先在内存门口挡掉：几百 MB 直接上传会把手机顶崩，
+                            // 而且公网走隧道时 100MB 以上一定会被网关拒掉。
+                            if (!file.size) {
+                                done(false, '「' + (file.name || '视频') + '」是空文件，传不上去');
+                                return;
+                            }
+                            if (file.size > VIDEO_MAX_BYTES) {
+                                done(false, '「' + (file.name || '视频') + '」有 ' + fmtBytes(file.size) +
+                                    '，超过 ' + fmtBytes(VIDEO_MAX_BYTES) + ' 上限，请压缩后再传');
+                                return;
+                            }
+                            if (file.size > VIDEO_WARN_BYTES) {
+                                toast('这个视频 ' + fmtBytes(file.size) +
+                                    '，公网隧道上限 100MB，可能会失败；传不上去请先压缩', 6000);
+                            }
+                            url = URL.createObjectURL(file);
                             var probe = document.createElement('video');
                             probe.preload = 'metadata';
+                            // 兜底超时：有些容器/编码 WebView 既不报错也不回调，
+                            // Promise 会永远不 settle —— 表现就是「选了没反应」。
+                            timer = setTimeout(function () {
+                                done(false, '「' + (file.name || '视频') +
+                                    '」读不出时长，可能是手机不支持的格式（建议 MP4）');
+                            }, VIDEO_PROBE_MS);
                             probe.onloadedmetadata = function () {
-                                var dur = Math.round(probe.duration || 0);
-                                URL.revokeObjectURL(url);
-                                if (!dur) {
-                                    hideProgress();
-                                    toast('读不到视频时长，请换一个格式');
-                                    resolve(false);
+                                if (settled) { return; }
+                                if (timer) { clearTimeout(timer); timer = null; }
+                                var dur = probe.duration;
+                                if (!dur || !isFinite(dur) || dur <= 0) {
+                                    done(false, '读不到视频时长，请换一段 MP4 视频');
                                     return;
                                 }
+                                dur = Math.round(dur);
                                 if (dur > 300) {
-                                    hideProgress();
-                                    toast('视频 ' + dur + ' 秒，超过 5 分钟，请换一段');
-                                    resolve(false);
+                                    done(false, '视频 ' + dur + ' 秒，超过 5 分钟，请换一段');
                                     return;
                                 }
                                 var fd = new FormData();
@@ -2588,32 +2622,32 @@
                                 xhr.onload = function () {
                                     var res = null;
                                     try { res = JSON.parse(xhr.responseText || '{}'); } catch (e) { res = null; }
-                                    if (!res || !res.ok) {
-                                        hideProgress();
-                                        toast((res && res.error) ||
-                                              ('上传失败（HTTP ' + xhr.status + '）'), 6000);
-                                        resolve(false);
+                                    if (res && res.ok) {
+                                        setProgress(100, (label ? label + ' · ' : '') + '已上传');
+                                        done(true);
                                         return;
                                     }
-                                    setProgress(100, (label ? label + ' · ' : '') + '已上传');
-                                    resolve(true);
+                                    if (res && res.error) { done(false, res.error); return; }
+                                    // 非 JSON 响应 = 多半不是 Odoo 回的，而是网关/代理直接挡了
+                                    // （Cloudflare 隧道对 >100MB 的请求体会返回 413 HTML 页面）
+                                    var st = xhr.status;
+                                    if (st === 413) {
+                                        done(false, '视频太大，被网关挡下了（HTTP 413）；公网访问上限约 100MB，请压缩后再传');
+                                    } else if (st === 401 || st === 403) {
+                                        done(false, '登录状态失效，请重新登录后再传');
+                                    } else if (st === 0) {
+                                        done(false, '网络中断，视频没有传上去');
+                                    } else {
+                                        done(false, '上传失败（HTTP ' + st + '）');
+                                    }
                                 };
-                                xhr.onerror = function () {
-                                    hideProgress();
-                                    toast('网络不稳，视频上传失败，请重试', 6000);
-                                    resolve(false);
-                                };
-                                xhr.ontimeout = function () {
-                                    hideProgress();
-                                    toast('上传超时，请检查网络后重试', 6000);
-                                    resolve(false);
-                                };
+                                xhr.onerror = function () { done(false, '网络不稳，视频上传失败，请重试'); };
+                                xhr.ontimeout = function () { done(false, '上传超时，请检查网络后重试'); };
+                                xhr.onabort = function () { done(false, '上传被中断，请重试'); };
                                 xhr.send(fd);
                             };
                             probe.onerror = function () {
-                                hideProgress();
-                                toast('这个视频格式读不出时长');
-                                resolve(false);
+                                done(false, '这个视频格式手机打不开（建议转成 MP4 再传）');
                             };
                             probe.src = url;
                         });
