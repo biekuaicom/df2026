@@ -13,5 +13,20 @@
             <field name="interval_type">hours</field>
             <field name="priority">5</field>
         </record>
+
+        <!-- 发货提醒：每 15 分钟检查一次，只在本地时间 9 点 / 15 点那一小时内真正写提醒
+             （每天各一次）。没有直接排 9:00/15:00 两个定点 cron，是为了服务器停机补跑时
+             也不会漏提醒；重复提醒由工单上的 ship_reminder_date / ship_reminder_slot 兜住。 -->
+        <record forcecreate="True" id="ir_cron_repair_ship_reminder" model="ir.cron">
+            <field name="name">机台维修：发货提醒（每天 9 点 / 15 点）</field>
+            <field name="model_id" ref="repair.model_repair_order"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_ship_reminder()</field>
+            <field eval="True" name="active"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="interval_number">15</field>
+            <field name="interval_type">minutes</field>
+            <field name="priority">6</field>
+        </record>
     </data>
 </odoo>
