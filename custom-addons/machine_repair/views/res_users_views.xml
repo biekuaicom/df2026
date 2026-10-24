@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 用户表单：位置监控页签（只有位置监控管理员/系统管理员看得到）。
+         分配工作位置有两种入口：这里按人分，或「工作位置」表单按地点分。 -->
+    <record id="view_users_form_machine_repair_location" model="ir.ui.view">
+        <field name="name">res.users.form.machine_repair.location</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='preferences']" position="after">
+                <page string="位置监控" name="machine_repair_location"
+                      groups="machine_repair.group_machine_repair_location_manager,base.group_system">
+                    <group>
+                        <field name="machine_repair_location_enabled"/>
+                        <field name="machine_repair_location_ids"
+                               widget="many2many_tags"
+                               options="{'no_create': True}"/>
+                    </group>
+                    <div class="text-muted">
+                        手机端只上报登录人自己的位置；是否在工作位置由「工作位置」的
+                        经纬度与半径判定。停用后该账号不再上报，但历史记录保留。
+                    </div>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>
