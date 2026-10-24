@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================ 工作位置 -->
+    <record id="view_machine_repair_work_location_list" model="ir.ui.view">
+        <field name="name">machine_repair.work_location.list</field>
+        <field name="model">machine_repair.work_location</field>
+        <field name="arch" type="xml">
+            <list string="工作位置" create="true" edit="true">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="partner_id" optional="show"/>
+                <field name="address" optional="hide"/>
+                <field name="latitude" optional="show"/>
+                <field name="longitude" optional="show"/>
+                <field name="coord_system" optional="hide"/>
+                <field name="radius"/>
+                <field name="user_count"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_work_location_form" model="ir.ui.view">
+        <field name="name">machine_repair.work_location.form</field>
+        <field name="model">machine_repair.work_location</field>
+        <field name="arch" type="xml">
+            <form string="工作位置">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="如：一号车间 / XX 纺织厂"/></h1>
+                    </div>
+                    <group>
+                        <group string="位置与范围">
+                            <field name="latitude"/>
+                            <field name="longitude"/>
+                            <field name="coord_system"/>
+                            <field name="radius"/>
+                            <field name="map_url" widget="url"/>
+                        </group>
+                        <group string="关联信息">
+                            <field name="partner_id"/>
+                            <field name="address"/>
+                            <field name="sequence"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="在此工作的人员">
+                        <field name="user_ids" widget="many2many_tags"
+                               options="{'no_create': True}"/>
+                    </group>
+                    <div class="text-muted" style="margin:4px 0 10px">
+                        经纬度可在高德/腾讯地图里长按取点（选 GCJ-02），或用手机 GPS 实测（选 WGS-84）。
+                        选错坐标系会让围栏偏移约 300~600 米。范围半径建议按现场大小设置
+                        （车间 100~300 米，客户厂区可适当放大）。手机端上报后，服务端按这里算「是否在工作位置」。
+                    </div>
+                    <field name="note" placeholder="备注"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_work_location_search" model="ir.ui.view">
+        <field name="name">machine_repair.work_location.search</field>
+        <field name="model">machine_repair.work_location</field>
+        <field name="arch" type="xml">
+            <search string="工作位置">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="user_ids"/>
+                <filter string="已启用" name="active" domain="[('active', '=', True)]"/>
+                <filter string="已停用" name="inactive" domain="[('active', '=', False)]"/>
+                <filter string="客户" name="group_partner" context="{'group_by': 'partner_id'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_machine_repair_work_location" model="ir.actions.act_window">
+        <field name="name">工作位置</field>
+        <field name="res_model">machine_repair.work_location</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_machine_repair_work_location_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">先添加上班的地点</p>
+            <p>填好经纬度和范围半径，把人分配进来，手机端就会按这里判断是否在工作位置。</p>
+        </field>
+    </record>
+
+    <!-- ============================================================ 实时位置（最新快照） -->
+    <record id="view_machine_repair_user_location_list" model="ir.ui.view">
+        <field name="name">machine_repair.user_location.list</field>
+        <field name="model">machine_repair.user_location</field>
+        <field name="arch" type="xml">
+            <list string="实时位置" create="false" edit="false" delete="false">
+                <button name="action_open_map" type="object" string="地图"
+                        icon="fa-map-marker" class="btn-link"/>
+                <field name="user_id"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'inside'"
+                       decoration-danger="state == 'outside'"
+                       decoration-muted="state == 'unassigned'"/>
+                <field name="place_id"/>
+                <field name="distance_text"/>
+                <field name="distance" optional="hide"/>
+                <field name="accuracy"/>
+                <field name="recorded_at"/>
+                <field name="age_minutes"/>
+                <field name="is_stale" optional="show"/>
+                <field name="source" optional="hide"/>
+                <field name="latitude" optional="hide"/>
+                <field name="longitude" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_user_location_form" model="ir.ui.view">
+        <field name="name">machine_repair.user_location.form</field>
+        <field name="model">machine_repair.user_location</field>
+        <field name="arch" type="xml">
+            <form string="人员位置" create="false" edit="false">
+                <sheet>
+                    <div>
+                        <button name="action_open_map" type="object"
+                                string="在高德地图中打开" icon="fa-map-marker"
+                                class="btn-secondary"/>
+                    </div>
+                    <group>
+                        <group string="人员">
+                            <field name="user_id" readonly="1"/>
+                            <field name="state" readonly="1"/>
+                            <field name="place_id" readonly="1"/>
+                            <field name="distance_text" readonly="1"/>
+                        </group>
+                        <group string="定位">
+                            <field name="latitude" readonly="1"/>
+                            <field name="longitude" readonly="1"/>
+                            <field name="accuracy" readonly="1"/>
+                            <field name="recorded_at" readonly="1"/>
+                            <field name="age_minutes" readonly="1"/>
+                            <field name="is_stale" readonly="1"/>
+                            <field name="source" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_user_location_search" model="ir.ui.view">
+        <field name="name">machine_repair.user_location.search</field>
+        <field name="model">machine_repair.user_location</field>
+        <field name="arch" type="xml">
+            <search string="实时位置">
+                <field name="user_id"/>
+                <field name="place_id"/>
+                <filter string="在工作位置" name="inside" domain="[('state', '=', 'inside')]"/>
+                <filter string="离开工作位置" name="outside" domain="[('state', '=', 'outside')]"/>
+                <filter string="未分配" name="unassigned" domain="[('state', '=', 'unassigned')]"/>
+                <filter string="状态" name="group_state" context="{'group_by': 'state'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_machine_repair_user_location" model="ir.actions.act_window">
+        <field name="name">实时位置</field>
+        <field name="res_model">machine_repair.user_location</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_machine_repair_user_location_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">还没有人员上报位置</p>
+            <p>让师傅用手机打开 <b>机台维修 App / 手机网页</b>，允许定位后，这里会显示每个人的最新位置。</p>
+        </field>
+    </record>
+
+    <!-- ============================================================ 位置记录（流水） -->
+    <record id="view_machine_repair_location_ping_list" model="ir.ui.view">
+        <field name="name">machine_repair.location_ping.list</field>
+        <field name="model">machine_repair.location_ping</field>
+        <field name="arch" type="xml">
+            <list string="位置记录" create="false" edit="false" delete="false">
+                <button name="action_open_map" type="object" string="地图"
+                        icon="fa-map-marker" class="btn-link"/>
+                <field name="recorded_at"/>
+                <field name="user_id"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'inside'"
+                       decoration-danger="state == 'outside'"
+                       decoration-muted="state == 'unassigned'"/>
+                <field name="place_id"/>
+                <field name="distance_text"/>
+                <field name="distance" optional="hide"/>
+                <field name="accuracy"/>
+                <field name="source"/>
+                <field name="latitude" optional="hide"/>
+                <field name="longitude" optional="hide"/>
+                <field name="ip" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_location_ping_form" model="ir.ui.view">
+        <field name="name">machine_repair.location_ping.form</field>
+        <field name="model">machine_repair.location_ping</field>
+        <field name="arch" type="xml">
+            <form string="位置记录" create="false" edit="false">
+                <sheet>
+                    <div>
+                        <button name="action_open_map" type="object"
+                                string="在高德地图中打开" icon="fa-map-marker"
+                                class="btn-secondary"/>
+                    </div>
+                    <group>
+                        <group string="人员">
+                            <field name="user_id" readonly="1"/>
+                            <field name="state" readonly="1"/>
+                            <field name="place_id" readonly="1"/>
+                            <field name="distance_text" readonly="1"/>
+                        </group>
+                        <group string="定位">
+                            <field name="recorded_at" readonly="1"/>
+                            <field name="latitude" readonly="1"/>
+                            <field name="longitude" readonly="1"/>
+                            <field name="accuracy" readonly="1"/>
+                            <field name="source" readonly="1"/>
+                            <field name="ip" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_machine_repair_location_ping_search" model="ir.ui.view">
+        <field name="name">machine_repair.location_ping.search</field>
+        <field name="model">machine_repair.location_ping</field>
+        <field name="arch" type="xml">
+            <search string="位置记录">
+                <field name="user_id"/>
+                <field name="place_id"/>
+                <field name="recorded_at"/>
+                <filter string="在工作位置" name="inside" domain="[('state', '=', 'inside')]"/>
+                <filter string="离开工作位置" name="outside" domain="[('state', '=', 'outside')]"/>
+                <filter string="未分配" name="unassigned" domain="[('state', '=', 'unassigned')]"/>
+                <filter string="人员" name="group_user" context="{'group_by': 'user_id'}"/>
+                <filter string="日期" name="group_date" context="{'group_by': 'recorded_at:day'}"/>
+                <filter string="状态" name="group_state" context="{'group_by': 'state'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_machine_repair_location_ping" model="ir.actions.act_window">
+        <field name="name">位置记录</field>
+        <field name="res_model">machine_repair.location_ping</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_machine_repair_location_ping_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">还没有位置记录</p>
+            <p>手机端每次上报都会在这里留一条流水，用于回看当天去过哪里。</p>
+        </field>
+    </record>
+
+    <!-- ============================================================ 位置看板（地图） -->
+    <record id="action_machine_repair_location_dashboard" model="ir.actions.act_url">
+        <field name="name">位置看板（地图）</field>
+        <field name="url">/machine_repair/locations</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- ============================================================ 定位设置 -->
+    <record id="view_machine_repair_location_settings" model="ir.ui.view">
+        <field name="name">machine_repair.location.settings.form</field>
+        <field name="model">res.config.settings</field>
+        <field name="arch" type="xml">
+            <form string="定位设置" class="oe_form_configuration" js_class="base_settings">
+                <app string="机台维修" name="machine_repair">
+                    <block title="手机端位置上报">
+                        <setting id="mr_location_enabled" string="启用位置上报"
+                                 help="总开关；关闭后不再记录新位置，历史记录保留。">
+                            <field name="mr_location_enabled"/>
+                        </setting>
+                        <setting id="mr_location_interval" string="上报间隔"
+                                 help="手机端在这个间隔内至少上报一次；移动超过下面的距离会立即上报。">
+                            <field name="mr_location_interval"/>
+                            <div class="text-muted">单位：秒，最小 15 秒</div>
+                        </setting>
+                        <setting id="mr_location_min_distance" string="移动多少米立即上报"
+                                 help="避免原地反复写流水；GPS 漂移大时可调大。">
+                            <field name="mr_location_min_distance"/>
+                            <div class="text-muted">单位：米</div>
+                        </setting>
+                    </block>
+                    <block title="查看与保留">
+                        <setting id="mr_location_stale_minutes" string="视为失联的分钟数"
+                                 help="看板用：最后上报超过该值显示为「失联」。">
+                            <field name="mr_location_stale_minutes"/>
+                        </setting>
+                        <setting id="mr_location_retention_days" string="位置记录保留天数"
+                                 help="每日 Cron 清理更早的流水与快照；0 表示永不清理（不建议）。">
+                            <field name="mr_location_retention_days"/>
+                        </setting>
+                    </block>
+                    <block title="权限说明">
+                        <div class="text-muted" style="line-height:1.8">
+                            位置数据只对「机台维修 / 位置监控管理员」和系统管理员可见；
+                            师傅账号在 Odoo 界面里看不到位置菜单，接口也只返回本人状态。
+                            工作位置在「机台维修 → 位置监控 → 工作位置」里维护。
+                        </div>
+                    </block>
+                </app>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_machine_repair_location_settings" model="ir.actions.act_window">
+        <field name="name">定位设置</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_machine_repair_location_settings"/>
+        <field name="context">{'module': 'machine_repair'}</field>
+    </record>
+
+    <!-- ============================================================ 菜单 -->
+    <menuitem id="menu_machine_repair_location" name="位置监控"
+              parent="menu_machine_repair_root" sequence="50"
+              groups="machine_repair.group_machine_repair_location_manager,base.group_system"/>
+    <menuitem id="menu_machine_repair_user_location" name="实时位置"
+              parent="menu_machine_repair_location"
+              action="action_machine_repair_user_location" sequence="10"/>
+    <menuitem id="menu_machine_repair_location_dashboard" name="位置看板（地图）"
+              parent="menu_machine_repair_location"
+              action="action_machine_repair_location_dashboard" sequence="20"/>
+    <menuitem id="menu_machine_repair_work_location" name="工作位置"
+              parent="menu_machine_repair_location"
+              action="action_machine_repair_work_location" sequence="30"/>
+    <menuitem id="menu_machine_repair_location_history" name="位置记录"
+              parent="menu_machine_repair_location"
+              action="action_machine_repair_location_ping" sequence="40"/>
+    <menuitem id="menu_machine_repair_location_settings" name="定位设置"
+              parent="menu_machine_repair_config"
+              action="action_machine_repair_location_settings" sequence="20"
+              groups="base.group_system"/>
+    <!-- menuitem 的 groups 属性只会追加成员组，不会移除历史授权；
+         这里显式覆盖成「只给系统管理员」，否则以前给位置监控管理员授过的权限会残留。 -->
+    <record id="menu_machine_repair_location_settings" model="ir.ui.menu">
+        <field name="group_ids" eval="[(6, 0, [ref('base.group_system')])]"/>
+    </record>
+</odoo>
