@@ -871,3 +871,23 @@ Android App 的 `onShowFileChooser` 更彻底 —— 只要 accept 是 video 就
 * 出新版时旧包自动移进 `D:\Odoo\dist\archive\`，dist 根目录永远只有当前这一版；
 * 历史固定名 `机台维修App-最新版.apk` 也自动归档，不再生成；
 * 内部分发目录 `mobile-android\dist\jiTaiWeiXiu-<版本>.apk` 保持不变。
+
+### 11. 相册视频「选了没反应」加固（2026-10-24，页面 v40）
+
+**症状**：录制视频上传正常；从相册选视频后既不提示成功也不提示失败。录制能成，
+说明 `input.click()` / `display:none` 这条链路本身没问题（两个入口用的是同一套），
+所以问题只可能出在**录制之外的差异**上。逐条排查后确认三个真实缺口：
+
+| 缺口 | 后果 | 现在怎么兜 |
+|---|---|---|
+| `<video>` 读时长时，容器/编码 WebView 不认（iPhone 的 .mov-HEVC、微信存的 mkv），`onloadedmetadata` 和 `onerror` **都不触发** | `new Promise` 永远不 settle，`next()` 卡死 → 进度环停在 0%，界面毫无反应 | 加 `VIDEO_PROBE_MS = 15s` 兜底超时，超时按「读不出时长」失败提示 |
+| 相册里的视频常是几百 MB，直接塞进 `FormData` | 手机内存被顶爆、线程静默挂起 | 前端先按体积拦截：>200MB 直接拒（与服务端一致），>100MB 给警告 |
+| 公网走 **Cloudflare 隧道**，免费版请求体上限 **100MB**，超了返回 HTML 413 | Odoo 的 200MB 上限根本用不到；`JSON.parse` 失败后只剩一句无信息量的 HTTP 提示 | `xhr.onload` 区分 413 / 401 / 403 / 状态 0，给出「被网关挡下、请压缩」等明确文案，并补 `onabort` |
+
+**另外**：`done()` 统一收尾（`settled` 保证 Promise 只结算一次、清超时、`revokeObjectURL`），
+并去掉函数内零散的 `hideProgress()` —— 进度环改由 `uploadVideoFiles()` 在整批结束后统一关闭，
+这样多段上传中途失败不会把进度环提前关掉。`#toast` 的 `z-index` 是 300、进度环是 110，
+提示不会被盖住。
+
+**部署**：这是服务端渲染的页面，**不需要重新打包 APK**；但要 `-u machine_repair` 升级模块，
+视图才会从 XML 重新写进 `ir_ui_view`（改文件本身不会自动生效）。
