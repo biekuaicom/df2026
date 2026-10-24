@@ -8,13 +8,19 @@
     https://df2026.213579.com/machine_repair/mobile
 """
 import base64
+import logging
+import math
+import time
+from datetime import timezone
 from urllib.parse import quote
 import re
 
-from odoo import http
+from odoo import fields, http
 from odoo.exceptions import UserError
 from odoo.http import request
 from odoo.tools import BinaryBytes
+
+_logger = logging.getLogger(__name__)
 
 URGENCY_LABELS = {
     'normal': '普通（7 天）',
@@ -25,8 +31,20 @@ URGENCY_LABELS = {
 INVOICE_GROUPS = ('account.group_account_invoice', 'account.group_account_manager',
                   'base.group_system', 'base.group_erp_manager')
 
+# 能看位置数据的人：位置监控管理员 + 系统管理员。
+# 师傅组没有任何位置模型 ACL，控制器里的写库一律用 sudo，因此读不到别人的位置。
+LOCATION_MANAGER_GROUPS = ('machine_repair.group_machine_repair_location_manager',
+                           'base.group_system')
+LOCATION_SOURCES = ('pwa', 'android')
+LOCATION_STATE_LABELS = {
+    'inside': '在工作位置',
+    'outside': '离开工作位置',
+    'unassigned': '未分配工作位置',
+    'no_report': '未上报',
+}
+
 SERVICE_WORKER_JS = """
-const CACHE = 'mr-shell-v1';
+const CACHE = 'mr-shell-v2';
 const SHELL = ['/machine_repair/mobile',
                '/machine_repair/static/src/js/jsQR.js',
                '/machine_repair/static/src/img/app-192.png'];
@@ -34,13 +52,28 @@ self.addEventListener('install', (e) => {
     e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-    e.waitUntil(self.clients.claim());
+    e.waitUntil(caches.keys().then((keys) => Promise.all(
+        keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))
+    )).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', (e) => {
     const req = e.request;
     if (req.method !== 'GET') { return; }              // POST 由页面的离线队列处理
     const url = new URL(req.url);
     if (url.pathname.indexOf('/machine_repair/') !== 0) { return; }
+    // 管理员看板/数据每次都要实时，不能走缓存
+    if (url.pathname.indexOf('/machine_repair/locations') === 0) { return; }
+    // 页面本身用 network-first：改了手机端界面，下次打开必须拿到新页面
+    if (req.mode === 'navigate' || url.pathname === '/machine_repair/mobile') {
+        e.respondWith(
+            fetch(req).then((resp) => {
+                const copy = resp.clone();
+                caches.open(CACHE).then((c) => c.put(req, copy));
+                return resp;
+            }).catch(() => caches.match('/machine_repair/mobile'))
+        );
+        return;
+    }
     e.respondWith(
         caches.match(req).then((hit) => hit || fetch(req).then((resp) => {
             const copy = resp.clone();
@@ -90,9 +123,222 @@ class MachineRepairMobile(http.Controller):
             ],
         })
 
+    # ------------------------------------------------------------------ 管理员：位置看板
+    @http.route('/machine_repair/locations', type='http', auth='user', sitemap=False)
+    def location_dashboard(self, **kwargs):
+        """管理员位置看板（独立轻量页，手机也能开）。非管理员直接 403。"""
+        if not self._is_location_manager():
+            return request.make_response(
+                '<!doctype html><html><head><meta charset="utf-8"/>'
+                '<meta name="viewport" content="width=device-width, initial-scale=1"/>'
+                '<title>无权限</title></head><body style="font-family:sans-serif;'
+                'padding:40px;color:#5d5669;line-height:1.8">'
+                '<h2 style="color:#b03030">没有查看位置信息的权限</h2>'
+                '<p>位置数据只对「机台维修 / 位置监控管理员」和系统管理员开放。</p>'
+                '<p><a href="/machine_repair/mobile">返回手机端</a></p>'
+                '</body></html>',
+                status=403,
+                headers=[('Content-Type', 'text/html; charset=utf-8')],
+            )
+        action = request.env.ref(
+            'machine_repair.action_machine_repair_work_location',
+            raise_if_not_found=False)
+        response = request.render('machine_repair.location_dashboard', {
+            'user_name': request.env.user.name,
+            'work_location_action_id': action.id if action else False,
+        })
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        return response
+
+    @http.route('/machine_repair/locations/data', type='http', auth='user',
+                methods=['GET'], sitemap=False)
+    def location_dashboard_data(self, **kwargs):
+        if not self._is_location_manager():
+            return self._json({'ok': False, 'error': 'forbidden'}, status=403)
+        response = self._json(self._location_dashboard_payload())
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        return response
+
+    # ------------------------------------------------------------------ 定位：上报 / 状态
+    @http.route('/machine_repair/mobile/location/state', type='http', auth='user',
+                methods=['POST'], sitemap=False)
+    def location_state(self, **kwargs):
+        """手机端启动时问一次：我要不要上报？多久一次？工作位置是什么？
+
+        注意：**不要求分配工作位置**。所有手机端用户（含管理员）登录后都自动上报；
+        没有工作位置时只是判定为「未分配」，位置本身照常记录。
+        """
+        config = self._location_config()
+        user = request.env.user.sudo()
+        places = self._location_places(user)
+        snapshot = request.env['machine_repair.user_location'].sudo().search(
+            [('user_id', '=', user.id)], limit=1)
+        tracking = bool(config['enabled'] and user.machine_repair_location_enabled)
+        reason, message = '', ''
+        if not config['enabled']:
+            reason, message = 'disabled', '管理员已关闭位置上报'
+        elif not user.machine_repair_location_enabled:
+            reason, message = 'disabled', '当前账号未启用位置上报，请联系管理员'
+        elif not places:
+            message = '未分配工作位置，位置仍会记录'
+        return self._json({
+            'ok': True,
+            'tracking': tracking,
+            'reason': reason,
+            'message': message,
+            'interval': config['interval'],
+            'min_distance': config['min_distance'],
+            'stale_minutes': config['stale_minutes'],
+            'server_ts': int(time.time()),
+            'user': {'id': user.id, 'name': user.name or ''},
+            # 只给名称/半径，不下发坐标 —— 避免师傅之间互相看到精确点位
+            'places': [{'id': place.id, 'name': place.name, 'radius': place.radius}
+                       for place in places],
+            'last': self._snapshot_payload(snapshot),
+            'is_location_manager': self._is_location_manager(),
+        })
+
+    @http.route('/machine_repair/mobile/location', type='http', auth='user',
+                methods=['POST'], sitemap=False)
+    def location_report(self, **kwargs):
+        return self._location_report_impl(kwargs)
+
+    @http.route('/machine_repair/mobile/location/native', type='http', auth='public',
+                methods=['POST'], csrf=False, sitemap=False)
+    def location_report_native(self, **kwargs):
+        """Android 前台服务用的上报入口（不受 CSRF token 限制）。
+
+        会话 cookie 仍然必需：服务把 WebView 的 session_id 带在 Cookie 头里。
+        额外要求自定义头 X-MR-Native，跨站表单无法设置自定义头，
+        跨站 fetch 会触发预检（Odoo 不返回 CORS 允许），以此代替 CSRF token。
+        """
+        headers = request.httprequest.headers
+        if headers.get('X-MR-Native') != '1' or headers.get('Origin'):
+            return self._json({'ok': False, 'error': 'forbidden'}, status=403)
+        user = request.env.user
+        if not user or user._is_public():
+            return self._json({'ok': False, 'error': 'auth'}, status=401)
+        payload = dict(kwargs)
+        payload['src'] = 'android'
+        return self._location_report_impl(payload, source_default='android')
+
+    def _location_report_impl(self, kwargs, source_default='pwa'):
+        """手机端上报一次位置。
+
+        安全要点：
+          * 只认登录会话里的用户，**不接受**客户端传 user_id；
+          * 是否在范围内完全由服务端按工作位置计算，客户端无法伪造；
+          * 写库用 sudo（普通账号没有位置模型 ACL），读的人也仅限管理员。
+        """
+        try:
+            latitude = float(kwargs.get('lat'))
+            longitude = float(kwargs.get('lng'))
+        except (TypeError, ValueError):
+            return self._json({'ok': False, 'error': '缺少有效的经纬度'})
+        if (not math.isfinite(latitude) or not math.isfinite(longitude)
+                or not -90.0 <= latitude <= 90.0
+                or not -180.0 <= longitude <= 180.0):
+            return self._json({'ok': False, 'error': '经纬度超出有效范围'})
+        try:
+            accuracy = float(kwargs.get('accuracy') or 0)
+        except (TypeError, ValueError):
+            accuracy = 0.0
+        if not math.isfinite(accuracy) or accuracy < 0:
+            accuracy = 0.0
+        accuracy = min(accuracy, 5000.0)
+        source = (kwargs.get('src') or source_default).strip().lower()
+        if source not in LOCATION_SOURCES:
+            source = 'pwa'
+
+        config = self._location_config()
+        user = request.env.user.sudo()
+        if not config['enabled'] or not user.machine_repair_location_enabled:
+            return self._json({
+                'ok': True, 'tracking': False, 'reason': 'disabled',
+                'message': '位置上报已关闭',
+                'interval': config['interval'], 'min_distance': config['min_distance'],
+                'server_ts': int(time.time()),
+            })
+        places = self._location_places(user)
+        inside, place, distance, radius = places._evaluate_position(latitude, longitude)
+        # 没分配工作位置也照样记录，只是判定为「未分配」
+        state = 'inside' if inside else ('outside' if places else 'unassigned')
+        now = fields.Datetime.now()
+        headers = request.httprequest.headers
+        ip = (headers.get('X-Forwarded-For') or '').split(',')[0].strip() \
+            or request.httprequest.remote_addr or ''
+        ping_vals = {
+            'user_id': user.id,
+            'latitude': latitude,
+            'longitude': longitude,
+            'accuracy': accuracy,
+            'distance': round(distance, 1) if distance is not None else 0.0,
+            'place_id': place.id if place else False,
+            'state': state,
+            'source': source,
+            'ip': ip[:64],
+            'recorded_at': now,
+        }
+
+        Ping = request.env['machine_repair.location_ping'].sudo()
+        previous = Ping.search([('user_id', '=', user.id)],
+                               order='recorded_at desc, id desc', limit=1)
+        created = False
+        if previous and (now - previous.recorded_at).total_seconds() < 8:
+            moved = request.env['machine_repair.work_location']._distance_m(
+                previous.latitude, previous.longitude, latitude, longitude)
+            if moved < 5:
+                ping = previous          # 8 秒内几乎没动：只更新快照，不刷流水
+            else:
+                ping = Ping.create(ping_vals)
+                created = True
+        else:
+            ping = Ping.create(ping_vals)
+            created = True
+
+        Snapshot = request.env['machine_repair.user_location'].sudo()
+        snapshot = Snapshot.search([('user_id', '=', user.id)], limit=1)
+        snapshot_vals = {
+            'user_id': user.id,
+            'latitude': latitude,
+            'longitude': longitude,
+            'accuracy': accuracy,
+            'distance': ping_vals['distance'],
+            'place_id': ping_vals['place_id'],
+            'state': state,
+            'source': source,
+            'recorded_at': now,
+        }
+        old_state = snapshot.state if snapshot else ''
+        if not snapshot:
+            Snapshot.create(snapshot_vals)
+        elif snapshot.recorded_at <= now:
+            snapshot.write(snapshot_vals)
+        if old_state and old_state != state:
+            _logger.info('位置状态变化：%s %s -> %s（距 %s %.0f 米）',
+                         user.login, old_state, state, place.name or '-', distance or 0)
+
+        return self._json({
+            'ok': True,
+            'tracking': True,
+            'received': created,
+            'state': state,
+            'state_label': LOCATION_STATE_LABELS.get(state, state),
+            'inside': inside,
+            'distance': round(distance, 1) if distance is not None else None,
+            'radius': radius,
+            'place': place.name or '',
+            'accuracy': accuracy,
+            'interval': config['interval'],
+            'min_distance': config['min_distance'],
+            'stale_minutes': config['stale_minutes'],
+            'server_ts': int(time.time()),
+        })
+
     # ------------------------------------------------------------------ 工具
-    def _json(self, data):
-        return request.make_json_response(data)
+    def _json(self, data, **kwargs):
+        return request.make_json_response(data, **kwargs)
 
     def _can_invoice(self):
         """谁能开票：按"是否真的有权新建发票"判定（会计组/管理员都满足）。
@@ -103,6 +349,181 @@ class MachineRepairMobile(http.Controller):
             return bool(request.env['account.move'].has_access('create'))
         except Exception:  # noqa: BLE001
             return False
+
+    # ------------------------------------------------------------------ 定位（公共工具）
+    def _is_location_manager(self):
+        """位置数据只给管理员看：所有位置接口/页面都先过这一关。"""
+        user = request.env.user
+        for xmlid in LOCATION_MANAGER_GROUPS:
+            try:
+                if user.has_group(xmlid):
+                    return True
+            except Exception:  # noqa: BLE001 —— 组缺失时不至于 500
+                continue
+        return False
+
+    def _location_config(self):
+        """定位设置（管理员在「机台维修 → 配置 → 定位设置」里改）。"""
+        params = request.env['ir.config_parameter'].sudo()
+        return {
+            'enabled': params.get_bool('machine_repair.location_enabled', True),
+            'interval': max(15, min(3600, params.get_int(
+                'machine_repair.location_interval', 60))),
+            'min_distance': max(5.0, min(5000.0, params.get_float(
+                'machine_repair.location_min_distance', 30.0))),
+            'stale_minutes': max(1, params.get_int(
+                'machine_repair.location_stale_minutes', 15)),
+            'retention_days': params.get_int(
+                'machine_repair.location_retention_days', 90),
+        }
+
+    @staticmethod
+    def _timestamp(value):
+        """Datetime（Odoo 存的是 UTC naive）→ epoch 秒，前端直接 new Date(ts*1000)。"""
+        if not value:
+            return None
+        value = fields.Datetime.to_datetime(value)
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return int(value.timestamp())
+
+    def _location_places(self, user):
+        """该人员被分配且启用中的工作位置（sudo 读：字段对普通账号不可见）。"""
+        return user.sudo().machine_repair_location_ids.filtered(lambda place: place.active)
+
+    def _snapshot_payload(self, snapshot):
+        if not snapshot:
+            return None
+        return {
+            'lat': snapshot.latitude,
+            'lng': snapshot.longitude,
+            'accuracy': snapshot.accuracy,
+            'distance': snapshot.distance,
+            'state': snapshot.state,
+            'state_label': LOCATION_STATE_LABELS.get(snapshot.state, snapshot.state),
+            'place': snapshot.place_id.name or '',
+            'place_id': snapshot.place_id.id or False,
+            'radius': snapshot.place_id.radius or None,
+            'source': snapshot.source,
+            'ts': self._timestamp(snapshot.recorded_at),
+        }
+
+    def _location_dashboard_payload(self):
+        """管理端看板数据：只返回聚合后的位置，不返回任何密码/无关资料。"""
+        env = request.env
+        config = self._location_config()
+        users = env['res.users'].sudo().search(
+            [('share', '=', False), ('active', '=', True)])
+        snapshots = env['machine_repair.user_location'].sudo().search(
+            [('user_id', 'in', users.ids)])
+        snapshot_by_user = {snap.user_id.id: snap for snap in snapshots}
+        places = env['machine_repair.work_location'].sudo().search(
+            [('active', '=', True)], order='sequence, name')
+        now_ts = int(time.time())
+        stale_after = max(1, config['stale_minutes']) * 60
+
+        rows = []
+        stats = {'total': 0, 'inside': 0, 'outside': 0, 'unassigned': 0,
+                 'no_report': 0, 'stale': 0}
+        for user in users:
+            assigned = self._location_places(user)
+            snapshot = snapshot_by_user.get(user.id)
+            enabled = bool(user.machine_repair_location_enabled)
+            if not assigned and not snapshot:
+                continue
+            if not enabled and not snapshot:
+                continue
+            row = {
+                'id': user.id,
+                'name': user.name or '',
+                'login': user.login or '',
+                'enabled': enabled,
+                'state': 'no_report',
+                'state_label': LOCATION_STATE_LABELS['no_report'],
+                'place': '',
+                'place_id': False,
+                'distance': None,
+                'accuracy': None,
+                'lat': None,
+                'lng': None,
+                'last_ts': None,
+                'age_sec': None,
+                'stale': False,
+                'source': '',
+                'places': assigned.ids,
+            }
+            if snapshot:
+                event_ts = self._timestamp(snapshot.recorded_at) or now_ts
+                age = max(0, now_ts - event_ts)
+                if assigned:
+                    inside, place, distance, _radius = assigned._evaluate_position(
+                        snapshot.latitude, snapshot.longitude)
+                    state = 'inside' if inside else 'outside'
+                else:
+                    state, distance = 'unassigned', None
+                    place = snapshot.place_id or env['machine_repair.work_location']
+                row.update({
+                    'lat': snapshot.latitude,
+                    'lng': snapshot.longitude,
+                    'accuracy': snapshot.accuracy,
+                    'distance': None if distance is None else round(distance, 1),
+                    'place': place.name or '',
+                    'place_id': place.id or False,
+                    'state': state,
+                    'state_label': LOCATION_STATE_LABELS.get(state, state),
+                    'last_ts': event_ts,
+                    'age_sec': age,
+                    'stale': age > stale_after,
+                    'source': snapshot.source or '',
+                })
+            stats['total'] += 1
+            if row['state'] == 'no_report':
+                stats['no_report'] += 1
+            elif row['stale']:
+                stats['stale'] += 1
+            elif row['state'] == 'inside':
+                stats['inside'] += 1
+            elif row['state'] == 'outside':
+                stats['outside'] += 1
+            else:
+                stats['unassigned'] += 1
+            rows.append(row)
+
+        rows.sort(key=lambda item: (item['state'] == 'no_report', item['stale'],
+                                    item['name']))
+        place_rows = [{
+            'id': place.id,
+            'name': place.name,
+            'partner': place.partner_id.name or '',
+            'lat': place.latitude,
+            'lng': place.longitude,
+            'coord_system': place.coord_system,
+            'radius': place.radius,
+            'user_count': len(place.user_ids),
+        } for place in places]
+
+        pings = env['machine_repair.location_ping'].sudo().search(
+            [], order='recorded_at desc, id desc', limit=30)
+        recent = [{
+            'user': ping.user_id.name or '',
+            'state_label': LOCATION_STATE_LABELS.get(ping.state, ping.state),
+            'distance': (None if ping.state == 'unassigned' or ping.distance is None
+                         else round(ping.distance, 1)),
+            'lat': ping.latitude,
+            'lng': ping.longitude,
+            'ts': self._timestamp(ping.recorded_at),
+            'source': ping.source or '',
+        } for ping in pings]
+
+        return {
+            'ok': True,
+            'now': now_ts,
+            'config': config,
+            'stats': stats,
+            'users': rows,
+            'places': place_rows,
+            'recent': recent,
+        }
 
     def _order(self, raw_id):
         try:
@@ -124,6 +545,10 @@ class MachineRepairMobile(http.Controller):
             'name': board_qr.name,
             'source': dict(board_qr._fields['source'].selection).get(board_qr.source, board_qr.source),
             'customer': board_qr.partner_id.display_name or '',
+            'customer_type': board_qr.partner_id.customer_type or 'monthly',
+            'customer_type_label': dict(
+                board_qr.partner_id._fields['customer_type'].selection).get(
+                    board_qr.partner_id.customer_type, ''),
             'machine': board_qr.machine_no or '',
             'machine_id': board_qr.machine_id.id or False,
             'product': board_qr.product_id.display_name or '',
@@ -132,6 +557,8 @@ class MachineRepairMobile(http.Controller):
             'monthly_start': str(board_qr.monthly_start_date or ''),
             'monthly_end': str(board_qr.monthly_end_date or ''),
             'warranty_end': str(board_qr.warranty_end_date or ''),
+            'warranty_start': str(board_qr.warranty_start_date or ''),
+            'warranty_months': board_qr.warranty_months or 0,
             'warranty_state': dict(board_qr._fields['warranty_state'].selection).get(
                 board_qr.warranty_state, ''),
             'in_warranty': board_qr.warranty_state == 'active',
@@ -240,6 +667,15 @@ class MachineRepairMobile(http.Controller):
             'back_photos': order.board_qr_id.back_photo_count,
             'error_code': order.error_code or '',
             'fault': order.fault_description or '',
+            # 发货：未发货 / 已发货 + 快递单号，列表里直接能看到
+            'shipped': bool(order.shipment_id),
+            'tracking_no': order.tracking_no or '',
+            'ship_date': order.ship_date.strftime('%Y-%m-%d %H:%M') if order.ship_date else '',
+            'can_ship': order.state in ('done', 'secondary_completed') and not order.shipment_id,
+            'warranty_months': int(order.warranty_months or 0),
+            'warranty_pending': order.warranty_start_pending,
+            # 活期客户建单时可以改本次保修月数
+            'customer_type': order.partner_id.customer_type or 'monthly',
         }
 
     # ------------------------------------------------------------------ 扫码 / 建单
@@ -293,7 +729,8 @@ class MachineRepairMobile(http.Controller):
             partners = Partner.browse(ids) if ids else Partner.search(
                 [('is_company', '=', True)], limit=20, order='name')
         return self._json({'ok': True, 'customers': [
-            {'id': partner.id, 'name': partner.display_name} for partner in partners]})
+            {'id': partner.id, 'name': partner.display_name,
+             'type': partner.customer_type or 'monthly'} for partner in partners]})
 
     @http.route('/machine_repair/mobile/create_order', type='http', auth='user',
                 methods=['POST'], sitemap=False)
@@ -349,7 +786,7 @@ class MachineRepairMobile(http.Controller):
             # 建单时**直接**用前端选的值（不能只依赖二维码生成时写入的）
             machine = request.env['customer.machine'].browse(_as_int(kwargs.get('machine_id'))).exists() or machine
             product = request.env['product.product'].browse(_as_int(kwargs.get('product_id'))).exists() or product
-            order = request.env['repair.order'].create({
+            vals = {
                 'partner_id': partner.id if partner else False,
                 'machine_id': machine.id if machine else False,
                 'product_id': product.id if product else False,
@@ -357,7 +794,12 @@ class MachineRepairMobile(http.Controller):
                 'fault_description': fault or False,
                 'error_code': (kwargs.get('error_code') or '')[:120] or False,
                 'board_qr_id': board_qr.id,
-            })
+            }
+            # 活期用户建单时可以改「本次保修月数」（首次维修的从发货快递时间起算）
+            months = _as_int(kwargs.get('warranty_months'))
+            if partner and partner.customer_type == 'adhoc' and 1 <= months <= 12:
+                vals['warranty_months'] = str(months)
+            order = request.env['repair.order'].create(vals)
             # 二维码上缺的机台/板件顺手补上，保证扫码查得到
             fix = {}
             if machine and not board_qr.machine_id: fix['machine_id'] = machine.id
@@ -400,6 +842,9 @@ class MachineRepairMobile(http.Controller):
         mine_repairing = [('technician_id', '=', user.id), ('state', '=', 'confirmed')]
         mine_timeout = [('technician_id', '=', user.id), ('state', '=', 'timeout_alert')]
         mine_done = [('technician_id', '=', user.id), ('state', 'in', DONE)]
+        # 消息 → 开票 / 发货 两个分栏的待办清单（所有人都看全厂，不只自己抢的）
+        invoice_open = [('state', 'in', DONE), ('invoice_ids', '=', False)]
+        ship_open = [('state', 'in', DONE), ('shipment_id', '=', False)]
 
         groups = {
             'pending': fetch(hall_pending, 'urgency_sequence, deadline_datetime', 50),
@@ -409,6 +854,8 @@ class MachineRepairMobile(http.Controller):
             'mine_repairing': fetch(mine_repairing, 'deadline_datetime', 30),
             'mine_timeout': fetch(mine_timeout, 'deadline_datetime', 30),
             'mine_done': fetch(mine_done, 'write_date desc', 20),
+            'invoice': fetch(invoice_open, 'write_date desc', 100),
+            'ship': fetch(ship_open, 'write_date asc', 100),
         }
         counts = {
             'pending': count(hall_pending),
@@ -418,6 +865,8 @@ class MachineRepairMobile(http.Controller):
             'mine_repairing': count(mine_repairing),
             'mine_timeout': count(mine_timeout),
             'mine_done': count(mine_done),
+            'invoice': count(invoice_open),
+            'ship': count(ship_open),
         }
         return self._json({
             'ok': True,
@@ -487,6 +936,86 @@ class MachineRepairMobile(http.Controller):
             return self._json({'ok': False, 'error': str(exc)[:200]})
         except Exception as exc:  # noqa: BLE001
             return self._json({'ok': False, 'error': str(exc)[:200]})
+
+    # ------------------------------------------------------------------ 发货（快递单号 + 包装照片）
+    @http.route('/machine_repair/mobile/ship_confirm', type='http', auth='user',
+                methods=['POST'], sitemap=False)
+    def ship_confirm(self, **kwargs):
+        """多张工单合并成一个快递单号发货（手机端「消息 → 发货」）。
+
+        一次性提交：勾选的工单 + 快递单号 + 多张包装照片（multipart）。
+        要求：工单都已完工且没发过货、有单号、至少 1 张照片。
+        """
+        raw_ids = (kwargs.get('order_ids') or '').strip()
+        order_ids = []
+        for chunk in re.split(r'[,\s]+', raw_ids):
+            if not chunk:
+                continue
+            try:
+                order_ids.append(int(chunk))
+            except (TypeError, ValueError):
+                continue
+        if not order_ids:
+            return self._json({'ok': False, 'error': '请先勾选要发货的工单'})
+        tracking_no = (kwargs.get('tracking_no') or '').strip()
+        if not tracking_no:
+            return self._json({'ok': False, 'error': '请先扫描或填写快递单号'})
+        carrier = (kwargs.get('carrier') or '').strip()
+        note = (kwargs.get('note') or '').strip()
+
+        uploads = request.httprequest.files.getlist('photo')
+        if not uploads:
+            return self._json({'ok': False, 'error': '请先拍照上传包装照片（至少 1 张）'})
+        photos = []
+        for upload in uploads:
+            data = upload.read()
+            if not data:
+                continue
+            if len(data) > 12 * 1024 * 1024:
+                return self._json({'ok': False, 'error': '单张照片不能超过 12MB，请重拍'})
+            photos.append({
+                'image': BinaryBytes(data),
+                'name': upload.filename or '包装照片',
+            })
+        if not photos:
+            return self._json({'ok': False, 'error': '照片是空的，请重新拍照上传'})
+
+        orders = request.env['repair.order'].browse(order_ids).exists()
+        if len(orders) != len(set(order_ids)):
+            return self._json({'ok': False, 'error': '有工单不存在，请刷新后重试'})
+        try:
+            shipment = request.env['machine.repair.shipment']._ship_orders(
+                orders, tracking_no, carrier=carrier or None, note=note or None,
+                photos=photos)
+        except UserError as exc:
+            return self._json({'ok': False, 'error': str(exc)[:200]})
+        except Exception as exc:  # noqa: BLE001
+            return self._json({'ok': False, 'error': str(exc)[:200]})
+        return self._json({
+            'ok': True,
+            'shipment': shipment.name,
+            'tracking_no': shipment.tracking_no,
+            'count': len(orders),
+            'photos': len(photos),
+            'ship_date': shipment.ship_date.strftime('%Y-%m-%d %H:%M'),
+            'orders': orders.mapped('name'),
+        })
+
+    @http.route('/machine_repair/mobile/ship_photo/<int:photo_id>', type='http',
+                auth='user', sitemap=False)
+    def ship_photo(self, photo_id, **kwargs):
+        """包装照片（手机端缩略图/大图都走这里，避免 /web/image 在 WebView 里的问题）。"""
+        photo = request.env['machine.shipment.photo'].browse(photo_id).exists()
+        if not photo or not photo.image:
+            return request.not_found()
+        data = bytes(photo.image)
+        if kwargs.get('size') != 'full' and 'image_256' in photo._fields and photo.image_256:
+            data = bytes(photo.image_256)
+        return request.make_response(data, [
+            ('Content-Type', 'image/jpeg'),
+            ('Content-Length', str(len(data))),
+            ('Cache-Control', 'private, max-age=86400'),
+        ])
 
     # ------------------------------------------------------------------ 现场拍照
     @http.route('/machine_repair/mobile/new_qr', type='http', auth='user',
@@ -612,6 +1141,23 @@ class MachineRepairMobile(http.Controller):
             } for video in order.video_ids],
             'can_complete': order.state in ('confirmed', 'timeout_alert'),
             'done': order.state in ('done', 'secondary_completed'),
+            'customer_type': order.partner_id.customer_type or 'monthly',
+            'warranty_months': int(order.warranty_months or 0),
+            'warranty_pending': order.warranty_start_pending,
+            'shipped': bool(order.shipment_id),
+            'can_ship': order.state in ('done', 'secondary_completed') and not order.shipment_id,
+            'shipment': {
+                'id': order.shipment_id.id,
+                'name': order.shipment_id.name,
+                'tracking_no': order.shipment_id.tracking_no or '',
+                'carrier': order.shipment_id.carrier or '',
+                'ship_date': order.shipment_id.ship_date.strftime('%Y-%m-%d %H:%M')
+                             if order.shipment_id.ship_date else '',
+                'photos': [{
+                    'id': photo.id,
+                    'url': '/machine_repair/mobile/ship_photo/%s' % photo.id,
+                } for photo in order.shipment_id.photo_ids],
+            } if order.shipment_id else None,
             'requirements': {
                 'photos_ok': order.board_qr_id.has_required_photos,
                 'front': order.board_qr_id.front_photo_count,
@@ -718,8 +1264,9 @@ class MachineRepairMobile(http.Controller):
         if duration and duration > 300:
             return self._json({'ok': False, 'error': '每段视频不能超过 5 分钟（当前 %s 秒）' % duration})
         data = upload.read()
-        if len(data) > 80 * 1024 * 1024:
-            return self._json({'ok': False, 'error': '视频过大（超过 80MB），请压缩后重传'})
+        # 手机相册里的视频通常比现场录的更大，放宽到 200MB（时长仍限 5 分钟）
+        if len(data) > 200 * 1024 * 1024:
+            return self._json({'ok': False, 'error': '视频过大（超过 200MB），请压缩后重传'})
         video = request.env['machine.repair.video'].create({
             'order_id': order.id,
             'name': upload.filename or 'repair.mp4',
